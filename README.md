@@ -12,6 +12,13 @@ External component to stream RTSP audio using ESPHome.
 - Uncompressed **L16 PCM** audio — 16 kHz mono 16-bit, RTP payload type 96 (`L16/16000/1`).
 - One client at a time.
 
+## Hardware
+
+A **dual-core ESP32 is recommended, e.g. the ESP32-S3.** On single-core chips
+(such as the ESP32-S2 that I'm testing on) the Wi-Fi stack and the audio loop 
+share one CPU core, so occasional brief (~1 s) audio gaps occur when Wi-Fi gets
+busy. A dual-core chip runs Wi-Fi and the audio loop on separate cores and avoids this.
+
 ## Goals
 
 - Stream microphone audio off an ESP32 over standard RTSP

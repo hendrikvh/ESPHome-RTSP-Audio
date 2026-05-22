@@ -663,8 +663,11 @@ void RtspAudioComponent::log_stream_stats_(int64_t now) {
     if (!this->underrun_warned_) {
       this->underrun_warned_ = true;
       ESP_LOGW(TAG,
-               "No RTP sent for >1s. Mic delivery: %u callbacks (%u empty), %u bytes; ring buffer %zu bytes. "
-               "0 callbacks => MicrophoneSource not delivering; callbacks but 0 bytes => I2S read no audio",
+               "No RTP sent for >1s. Mic totals: %u callbacks (%u empty), %u bytes; ring buffer %zu bytes. "
+               "If these totals are still rising, this is a transient send-side stall (e.g. Wi-Fi "
+               "activity) and is harmless once the stream recovers. If the totals are frozen, the "
+               "microphone stopped: 0 callbacks = MicrophoneSource not delivering; callbacks but "
+               "0 bytes = I2S read no audio.",
                this->mic_callbacks_, this->mic_empty_callbacks_, this->mic_bytes_received_,
                this->ring_buffer_->available());
     }
