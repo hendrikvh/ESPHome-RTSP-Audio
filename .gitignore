@@ -1,0 +1,6 @@
+# Temp local testing
+.esphome/
+
+# Python bytecode
+__pycache__/
+*.pyc

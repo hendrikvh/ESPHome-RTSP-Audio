@@ -1,0 +1,49 @@
+esphome:
+  name: rtsp-audio
+  friendly_name: RTSP Audio
+
+esp32:
+  board: lolin_s2_mini
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+logger:
+  level: DEBUG
+
+api:
+
+ota:
+  - platform: esphome
+    password: !secret ota_secret
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [ rtsp_audio ]
+
+i2s_audio:
+  id: i2s_inmp441
+  i2s_lrclk_pin: GPIO11   # INMP441 WS
+  i2s_bclk_pin: GPIO9     # INMP441 SCK
+
+microphone:
+  - platform: i2s_audio
+    id: mic_inmp441
+    i2s_audio_id: i2s_inmp441
+    adc_type: external
+    i2s_din_pin: GPIO12   # INMP441 SD
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: left
+
+rtsp_audio:
+  id: rtsp_mic
+  microphone:
+    microphone: mic_inmp441
+  port: 554
+  packet_ms: 20
