@@ -38,6 +38,11 @@ class RtspAudioComponent : public Component {
   // RTP payload type for dynamic L16 mapping in our SDP.
   static constexpr uint8_t RTP_PAYLOAD_TYPE = 96;
   static constexpr size_t RTP_HEADER_BYTES = 12;
+  // RTSP TCP-interleaved framing prefix: '$' + 1-byte channel + 2-byte length.
+  static constexpr size_t INTERLEAVE_HEADER_BYTES = 4;
+  // Cap on buffered control-socket bytes. When interleaved RTP would push past
+  // this (a client not draining the TCP socket), whole packets are dropped.
+  static constexpr size_t MAX_TX_BACKLOG_BYTES = 16384;
 
   // Networking lifecycle.
   void start_listen_socket_();
@@ -48,6 +53,10 @@ class RtspAudioComponent : public Component {
   // RTSP message dispatch.
   bool handle_rtsp_message_(const std::string &request);
   void send_rtsp_response_(const std::string &response);
+  /// Pushes as much of `tx_buffer_` to the control socket as it will accept.
+  /// All control-socket output (RTSP responses and interleaved RTP) flows
+  /// through this one buffer so the byte stream stays correctly ordered.
+  void flush_tx_buffer_();
   std::string build_sdp_() const;
 
   // Audio path.
@@ -91,6 +100,13 @@ class RtspAudioComponent : public Component {
   uint32_t session_id_{1};
   std::string content_base_;
   std::string track_url_;
+
+  // Transport: false = RTP over UDP, true = RTP interleaved on the RTSP TCP
+  // connection. Chosen per-client at SETUP. `tx_buffer_` holds pending
+  // control-socket output for both RTSP responses and interleaved RTP.
+  bool interleaved_{false};
+  uint8_t rtp_channel_{0};
+  std::string tx_buffer_;
 
   // RTP destination + bookkeeping.
   sockaddr_storage client_rtp_addr_{};

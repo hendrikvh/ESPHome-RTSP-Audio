@@ -38,8 +38,11 @@ std::string parse_request_uri(const std::string &request_line) {
 
 struct ParsedTransport {
   bool valid{false};
+  bool interleaved{false};  // true = RTP/AVP/TCP framed on the RTSP connection
   uint16_t client_rtp_port{0};
   uint16_t client_rtcp_port{0};
+  uint8_t rtp_channel{0};
+  uint8_t rtcp_channel{1};
 };
 
 ParsedTransport parse_transport(const std::string &header) {
@@ -48,10 +51,27 @@ ParsedTransport parse_transport(const std::string &header) {
   if (colon == std::string::npos)
     return out;
   std::string value = header.substr(colon + 1);
-  // We only support plain UDP RTP for the MVP; reject TCP-interleaved.
-  if (value.find("RTP/AVP/TCP") != std::string::npos || value.find("interleaved") != std::string::npos)
-    return out;
 
+  // TCP-interleaved transport: RTP is framed on the RTSP connection itself
+  // (RFC 2326 section 10.12). FFmpeg, NVRs, and most non-VLC clients default
+  // to this. `interleaved=<rtp>-<rtcp>` names the two channel ids.
+  if (value.find("RTP/AVP/TCP") != std::string::npos || value.find("interleaved") != std::string::npos) {
+    out.interleaved = true;
+    const char *ic = std::strstr(value.c_str(), "interleaved=");
+    unsigned c1 = 0;
+    unsigned c2 = 0;
+    if (ic != nullptr && std::sscanf(ic, "interleaved=%u-%u", &c1, &c2) == 2) {
+      out.rtp_channel = static_cast<uint8_t>(c1);
+      out.rtcp_channel = static_cast<uint8_t>(c2);
+    } else if (ic != nullptr && std::sscanf(ic, "interleaved=%u", &c1) == 1) {
+      out.rtp_channel = static_cast<uint8_t>(c1);
+      out.rtcp_channel = static_cast<uint8_t>(c1 + 1);
+    }
+    out.valid = true;
+    return out;
+  }
+
+  // Plain UDP RTP/AVP: the client advertises its receive ports via client_port.
   const char *kp = std::strstr(value.c_str(), "client_port=");
   if (kp == nullptr)
     return out;
@@ -143,6 +163,7 @@ void RtspAudioComponent::loop() {
   if (this->control_socket_)
     this->drain_control_socket_();
   this->maybe_send_rtp_();
+  this->flush_tx_buffer_();
 }
 
 void RtspAudioComponent::attach_mic_callback_() {
@@ -260,6 +281,8 @@ void RtspAudioComponent::try_accept_() {
   this->streaming_ = false;
   this->content_base_.clear();
   this->track_url_.clear();
+  this->interleaved_ = false;
+  this->tx_buffer_.clear();
   ESP_LOGI(TAG, "RTSP client accepted (session %u)", this->session_id_);
 }
 
@@ -284,7 +307,21 @@ void RtspAudioComponent::drain_control_socket_() {
 
   this->rx_buffer_.append(reinterpret_cast<const char *>(scratch), static_cast<size_t>(r));
 
-  while (true) {
+  while (!this->rx_buffer_.empty()) {
+    // An interleaved binary frame from the client (e.g. an RTCP receiver
+    // report) starts with '$'. We don't consume RTCP, so skip the whole frame
+    // rather than letting binary bytes corrupt RTSP request parsing.
+    if (static_cast<uint8_t>(this->rx_buffer_[0]) == '$') {
+      if (this->rx_buffer_.size() < INTERLEAVE_HEADER_BYTES)
+        break;  // wait for the full 4-byte framing header
+      const size_t frame_len = (static_cast<uint8_t>(this->rx_buffer_[2]) << 8) |
+                               static_cast<uint8_t>(this->rx_buffer_[3]);
+      if (this->rx_buffer_.size() < INTERLEAVE_HEADER_BYTES + frame_len)
+        break;  // wait for the full frame
+      this->rx_buffer_.erase(0, INTERLEAVE_HEADER_BYTES + frame_len);
+      continue;
+    }
+
     auto end = this->rx_buffer_.find("\r\n\r\n");
     if (end == std::string::npos)
       break;
@@ -298,16 +335,25 @@ void RtspAudioComponent::drain_control_socket_() {
 void RtspAudioComponent::send_rtsp_response_(const std::string &response) {
   if (!this->control_socket_)
     return;
-  ssize_t wr = this->control_socket_->write(response.data(), response.size());
+  // Queue, don't write directly: RTSP responses and interleaved RTP share the
+  // control socket and must stay correctly ordered on the wire.
+  this->tx_buffer_.append(response);
+  this->flush_tx_buffer_();
+}
+
+void RtspAudioComponent::flush_tx_buffer_() {
+  if (this->tx_buffer_.empty() || !this->control_socket_)
+    return;
+  ssize_t wr = this->control_socket_->write(this->tx_buffer_.data(), this->tx_buffer_.size());
   if (wr < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK)
-      return;
-    ESP_LOGW(TAG, "RTSP write errno=%d", errno);
+      return;  // socket full; retry next loop
+    ESP_LOGW(TAG, "Control socket write errno=%d", errno);
     this->close_session_();
     return;
   }
-  if (static_cast<size_t>(wr) != response.size())
-    ESP_LOGW(TAG, "RTSP partial write %zd/%zu", wr, response.size());
+  if (wr > 0)
+    this->tx_buffer_.erase(0, static_cast<size_t>(wr));
 }
 
 std::string RtspAudioComponent::build_sdp_() const {
@@ -382,12 +428,31 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
   }
 
   if (method == "setup") {
+    ESP_LOGD(TAG, "SETUP transport request: \"%s\"", transport_hdr.c_str());
     ParsedTransport tr = parse_transport(transport_hdr);
     if (!tr.valid) {
+      ESP_LOGW(TAG, "Rejecting SETUP 461: unparseable transport \"%s\"", transport_hdr.c_str());
       this->send_rtsp_response_(str_sprintf("RTSP/1.0 461 Unsupported Transport\r\n%s\r\n", cseq_hdr.c_str()));
       return true;
     }
 
+    if (tr.interleaved) {
+      // RTP framed on the RTSP TCP connection — no separate UDP socket needed.
+      this->interleaved_ = true;
+      this->rtp_channel_ = tr.rtp_channel;
+      this->rtp_socket_.reset();
+      this->send_rtsp_response_(str_sprintf(
+          "RTSP/1.0 200 OK\r\n%sSession: %u;timeout=120\r\n"
+          "Transport: RTP/AVP/TCP;unicast;interleaved=%u-%u\r\n\r\n",
+          cseq_hdr.c_str(), this->session_id_, static_cast<unsigned>(tr.rtp_channel),
+          static_cast<unsigned>(tr.rtcp_channel)));
+      this->session_active_ = true;
+      ESP_LOGI(TAG, "SETUP: TCP-interleaved transport (RTP channel %u)", static_cast<unsigned>(tr.rtp_channel));
+      return true;
+    }
+
+    // UDP transport: learn the client's RTP port and open our send socket.
+    this->interleaved_ = false;
     sockaddr_storage peer{};
     socklen_t peer_len = sizeof(peer);
     if (this->control_socket_->getpeername(reinterpret_cast<sockaddr *>(&peer), &peer_len) != 0) {
@@ -438,7 +503,7 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
   }
 
   if (method == "play") {
-    if (!this->session_active_ || !this->rtp_socket_) {
+    if (!this->session_active_ || (!this->interleaved_ && !this->rtp_socket_)) {
       this->send_rtsp_response_(str_sprintf("RTSP/1.0 454 Session Not Found\r\n%s\r\n", cseq_hdr.c_str()));
       return true;
     }
@@ -520,13 +585,18 @@ void RtspAudioComponent::close_session_() {
     this->control_socket_.reset();
   }
   this->rx_buffer_.clear();
+  this->tx_buffer_.clear();
   this->session_active_ = false;
+  this->interleaved_ = false;
   this->deallocate_stream_buffers_();
   ESP_LOGI(TAG, "RTSP session closed");
 }
 
 void RtspAudioComponent::maybe_send_rtp_() {
-  if (!this->streaming_ || !this->rtp_socket_ || this->ring_buffer_ == nullptr || this->rtp_packet_ == nullptr)
+  if (!this->streaming_ || this->ring_buffer_ == nullptr || this->rtp_packet_ == nullptr)
+    return;
+  // UDP needs the RTP socket; interleaved mode rides the control socket.
+  if (this->interleaved_ ? (this->control_socket_ == nullptr) : (this->rtp_socket_ == nullptr))
     return;
 
   const int64_t now = esp_timer_get_time();
@@ -565,10 +635,15 @@ void RtspAudioComponent::log_stream_stats_(int64_t now) {
   // the destination so it can be checked against the RTSP client's address.
   if (this->rtp_packets_sent_ > 0 && !this->first_packet_logged_) {
     this->first_packet_logged_ = true;
-    auto *addr4 = reinterpret_cast<sockaddr_in *>(&this->client_rtp_addr_);
-    const uint32_t ip = ntohl(addr4->sin_addr.s_addr);
-    ESP_LOGI(TAG, "First RTP packet sent to %u.%u.%u.%u:%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF,
-             (ip >> 8) & 0xFF, ip & 0xFF, ntohs(addr4->sin_port));
+    if (this->interleaved_) {
+      ESP_LOGI(TAG, "First RTP packet sent (TCP-interleaved, channel %u)",
+               static_cast<unsigned>(this->rtp_channel_));
+    } else {
+      auto *addr4 = reinterpret_cast<sockaddr_in *>(&this->client_rtp_addr_);
+      const uint32_t ip = ntohl(addr4->sin_addr.s_addr);
+      ESP_LOGI(TAG, "First RTP packet sent to %u.%u.%u.%u:%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF,
+               (ip >> 8) & 0xFF, ip & 0xFF, ntohs(addr4->sin_port));
+    }
   }
 
   // Underrun: streaming but nothing sent for over a second. Almost always the
@@ -632,7 +707,29 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   for (size_t i = 0; i < this->samples_per_packet_; i++)
     samples[i] = convert_big_endian(samples[i]);
 
-  ssize_t sent = this->rtp_socket_->sendto(header, RTP_HEADER_BYTES + payload_bytes, 0,
+  const size_t packet_len = RTP_HEADER_BYTES + payload_bytes;
+
+  if (this->interleaved_) {
+    // Frame the packet on the RTSP TCP connection: '$' + channel + 16-bit
+    // length + RTP. If the client is not draining the socket, drop whole
+    // packets (never a partial one — that would corrupt the framing) but still
+    // advance seq/ts so the receiver sees an ordinary loss rather than a stall.
+    if (this->tx_buffer_.size() + INTERLEAVE_HEADER_BYTES + packet_len <= MAX_TX_BACKLOG_BYTES) {
+      const uint8_t framing[INTERLEAVE_HEADER_BYTES] = {'$', this->rtp_channel_,
+                                                        static_cast<uint8_t>((packet_len >> 8) & 0xFF),
+                                                        static_cast<uint8_t>(packet_len & 0xFF)};
+      this->tx_buffer_.append(reinterpret_cast<const char *>(framing), INTERLEAVE_HEADER_BYTES);
+      this->tx_buffer_.append(reinterpret_cast<const char *>(header), packet_len);
+      this->rtp_packets_sent_++;
+      this->last_packet_usec_ = esp_timer_get_time();
+    }
+    this->rtp_seq_++;
+    this->rtp_ts_ += this->samples_per_packet_;
+    return true;
+  }
+
+  // UDP transport.
+  ssize_t sent = this->rtp_socket_->sendto(header, packet_len, 0,
                                            reinterpret_cast<sockaddr *>(&this->client_rtp_addr_),
                                            sizeof(sockaddr_in));
   if (sent < 0) {
@@ -641,8 +738,8 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
     ESP_LOGW(TAG, "RTP sendto errno=%d", errno);
     return false;
   }
-  if (static_cast<size_t>(sent) != RTP_HEADER_BYTES + payload_bytes) {
-    ESP_LOGW(TAG, "RTP short send %zd/%zu", sent, RTP_HEADER_BYTES + payload_bytes);
+  if (static_cast<size_t>(sent) != packet_len) {
+    ESP_LOGW(TAG, "RTP short send %zd/%zu", sent, packet_len);
     return false;
   }
 
