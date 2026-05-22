@@ -1,5 +1,7 @@
 # ESPHome RTSP Audio
 
+**Status:** Early development. Buggy and unreliable.
+
 External component to stream RTSP audio using ESPHome.
 
 ## Goals

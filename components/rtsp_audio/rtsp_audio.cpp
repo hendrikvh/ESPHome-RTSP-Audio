@@ -140,6 +140,12 @@ void RtspAudioComponent::setup() {
   this->rtp_packet_size_ = RTP_HEADER_BYTES + this->stream_info_.samples_to_bytes(this->samples_per_packet_);
 
   this->attach_mic_callback_();
+
+  // Reserve the control-socket output buffer once, up front, so it never has to
+  // reallocate later. A large std::string reallocation needs the old and new
+  // buffers simultaneously and can abort on a low-RAM board.
+  this->tx_buffer_.reserve(TX_BUFFER_CAPACITY_BYTES);
+
   this->start_listen_socket_();
 }
 
@@ -431,7 +437,10 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
     ESP_LOGD(TAG, "SETUP transport request: \"%s\"", transport_hdr.c_str());
     ParsedTransport tr = parse_transport(transport_hdr);
     if (!tr.valid) {
-      ESP_LOGW(TAG, "Rejecting SETUP 461: unparseable transport \"%s\"", transport_hdr.c_str());
+      ESP_LOGW(TAG,
+               "Rejecting SETUP 461: need RTP/AVP UDP with client_port= or RTP/AVP/TCP interleaved. "
+               "Client requested: \"%s\"",
+               transport_hdr.c_str());
       this->send_rtsp_response_(str_sprintf("RTSP/1.0 461 Unsupported Transport\r\n%s\r\n", cseq_hdr.c_str()));
       return true;
     }
@@ -461,6 +470,8 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
       return false;
     }
     if (peer.ss_family != AF_INET) {
+      ESP_LOGW(TAG, "Rejecting SETUP 461: UDP transport needs an IPv4 client; "
+                    "an IPv6 client can use TCP-interleaved (RTP/AVP/TCP) instead");
       this->send_rtsp_response_(str_sprintf("RTSP/1.0 461 Unsupported Transport\r\n%s\r\n", cseq_hdr.c_str()));
       return true;
     }
@@ -714,7 +725,7 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
     // length + RTP. If the client is not draining the socket, drop whole
     // packets (never a partial one — that would corrupt the framing) but still
     // advance seq/ts so the receiver sees an ordinary loss rather than a stall.
-    if (this->tx_buffer_.size() + INTERLEAVE_HEADER_BYTES + packet_len <= MAX_TX_BACKLOG_BYTES) {
+    if (this->tx_buffer_.size() + INTERLEAVE_HEADER_BYTES + packet_len <= MAX_RTP_BACKLOG_BYTES) {
       const uint8_t framing[INTERLEAVE_HEADER_BYTES] = {'$', this->rtp_channel_,
                                                         static_cast<uint8_t>((packet_len >> 8) & 0xFF),
                                                         static_cast<uint8_t>(packet_len & 0xFF)};

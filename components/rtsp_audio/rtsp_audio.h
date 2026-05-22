@@ -40,9 +40,14 @@ class RtspAudioComponent : public Component {
   static constexpr size_t RTP_HEADER_BYTES = 12;
   // RTSP TCP-interleaved framing prefix: '$' + 1-byte channel + 2-byte length.
   static constexpr size_t INTERLEAVE_HEADER_BYTES = 4;
-  // Cap on buffered control-socket bytes. When interleaved RTP would push past
-  // this (a client not draining the TCP socket), whole packets are dropped.
-  static constexpr size_t MAX_TX_BACKLOG_BYTES = 16384;
+  // Control-socket output buffer sizing. `tx_buffer_` is reserve()d to
+  // TX_BUFFER_CAPACITY_BYTES once at setup() so it never reallocates — growing
+  // a std::string toward a large size needs old+new buffers at once and can
+  // exhaust the heap (and abort) on a no-PSRAM board. Interleaved RTP queueing
+  // stops at MAX_RTP_BACKLOG_BYTES, leaving headroom for RTSP responses so the
+  // buffer never has to grow past its reserved capacity.
+  static constexpr size_t TX_BUFFER_CAPACITY_BYTES = 8192;
+  static constexpr size_t MAX_RTP_BACKLOG_BYTES = 7168;
 
   // Networking lifecycle.
   void start_listen_socket_();
