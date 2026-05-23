@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Keep in sync with Makefile.
+  ESPHOME_IMAGE: esphome/esphome:2026.5.0
+
+jobs:
+  lint:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: pre-commit/action@v3.0.1
+
+  config:
+    name: esphome config (${{ matrix.file }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        file:
+          - test.esp32-s2-idf.yaml
+          - test.esp32-s3-idf.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - name: esphome config
+        run: |
+          docker run --rm \
+            -v "${PWD}:/config" \
+            -w /config \
+            "${ESPHOME_IMAGE}" \
+            config "tests/components/rtsp_audio/${{ matrix.file }}"
+
+  compile-pr:
+    name: esphome compile (esp32-s3-idf)
+    if: github.event_name == 'pull_request'
+    needs: [lint, config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache ESPHome / PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            .esphome
+            ~/.platformio
+          key: esphome-${{ env.ESPHOME_IMAGE }}-esp32-s3-idf-${{ hashFiles('tests/components/rtsp_audio/test.esp32-s3-idf.yaml', 'components/rtsp_audio/**') }}
+          restore-keys: |
+            esphome-${{ env.ESPHOME_IMAGE }}-esp32-s3-idf-
+      - name: esphome compile
+        run: |
+          docker run --rm \
+            -v "${PWD}:/config" \
+            -v "${HOME}/.platformio:/root/.platformio" \
+            -w /config \
+            "${ESPHOME_IMAGE}" \
+            compile tests/components/rtsp_audio/test.esp32-s3-idf.yaml
+
+  compile-main:
+    name: esphome compile (${{ matrix.board }})
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, config]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [esp32-s2-idf, esp32-s3-idf]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache ESPHome / PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            .esphome
+            ~/.platformio
+          key: esphome-${{ env.ESPHOME_IMAGE }}-${{ matrix.board }}-${{ hashFiles(format('tests/components/rtsp_audio/test.{0}.yaml', matrix.board), 'components/rtsp_audio/**') }}
+          restore-keys: |
+            esphome-${{ env.ESPHOME_IMAGE }}-${{ matrix.board }}-
+      - name: esphome compile
+        run: |
+          docker run --rm \
+            -v "${PWD}:/config" \
+            -v "${HOME}/.platformio:/root/.platformio" \
+            -w /config \
+            "${ESPHOME_IMAGE}" \
+            compile "tests/components/rtsp_audio/test.${{ matrix.board }}.yaml"
