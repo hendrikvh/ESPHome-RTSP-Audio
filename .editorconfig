@@ -1,0 +1,19 @@
+# Top-most editorconfig in the tree.
+root = true
+
+# Defaults applied to every file.
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Python: PEP 8 indent.
+[*.py]
+indent_size = 4
+
+# Markdown: trailing whitespace can mean "line break", keep it.
+[*.md]
+trim_trailing_whitespace = false

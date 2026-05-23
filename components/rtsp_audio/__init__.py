@@ -5,6 +5,7 @@ from esphome.const import CONF_ID, CONF_MICROPHONE, CONF_PORT, Framework
 
 CONF_PACKET_MS = "packet_ms"
 
+CODEOWNERS = ["@hendrikvh"]
 AUTO_LOAD = ["socket", "network"]
 DEPENDENCIES = ["microphone"]
 
