@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- **Diagnostic sensors for Home Assistant.** Opt-in `client_connected`
+  (binary_sensor), `client_ip` (text_sensor), and `bytes_sent` (sensor)
+  so an HA dashboard can see in real time whether a client is pulling
+  audio, who it is, and at what bitrate without watching serial logs.
+  All three are opt-in via separate platform blocks and tagged
+  `entity_category: diagnostic`. See
+  [docs/configuration.md](docs/configuration.md#diagnostic-sensors).
 - **RTSP session inactivity timeout to better handle silent client disconnects.**
   A client that disappears without sending `TEARDOWN` (ue to crash,
   sleep, Wi-Fi drop) is now reaped after 60 s instead of blocking the

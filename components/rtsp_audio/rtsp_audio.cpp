@@ -3,6 +3,7 @@
 #include "internal/session_timeout.h"
 #ifdef USE_RTSP_AUDIO
 
+#include <arpa/inet.h>
 #include <esp_random.h>
 #include <esp_timer.h>
 #include <strings.h>
@@ -157,6 +158,15 @@ void RtspAudioComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  Session timeout: %us", SESSION_TIMEOUT_SECONDS);
   ESP_LOGCONFIG(TAG, "  Audio: %u Hz / %u ch / %u bit, %u samples/pkt", this->stream_info_.get_sample_rate(),
                 this->stream_info_.get_channels(), this->stream_info_.get_bits_per_sample(), this->samples_per_packet_);
+#ifdef USE_BINARY_SENSOR
+  LOG_BINARY_SENSOR("  ", "Client Connected", this->client_connected_bs_);
+#endif
+#ifdef USE_TEXT_SENSOR
+  LOG_TEXT_SENSOR("  ", "Client IP", this->client_ip_ts_);
+#endif
+#ifdef USE_SENSOR
+  LOG_SENSOR("  ", "Bytes Sent", this->bytes_sent_sensor_);
+#endif
 }
 
 void RtspAudioComponent::loop() {
@@ -462,6 +472,7 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
                       cseq_hdr.c_str(), this->session_id_, SESSION_TIMEOUT_SECONDS,
                       static_cast<unsigned>(tr.rtp_channel), static_cast<unsigned>(tr.rtcp_channel)));
       this->session_active_ = true;
+      this->publish_session_state_();
       ESP_LOGI(TAG, "SETUP: TCP-interleaved transport (RTP channel %u)", static_cast<unsigned>(tr.rtp_channel));
       return true;
     }
@@ -517,6 +528,7 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
                     cseq_hdr.c_str(), this->session_id_, SESSION_TIMEOUT_SECONDS, tr.client_rtp_port,
                     tr.client_rtcp_port, this->server_rtp_port_, this->server_rtp_port_ + 1));
     this->session_active_ = true;
+    this->publish_session_state_();
     return true;
   }
 
@@ -573,6 +585,7 @@ void RtspAudioComponent::start_streaming_() {
 
   // Reset streaming diagnostics for this session.
   this->rtp_packets_sent_ = 0;
+  this->bytes_sent_ = 0;
   this->stats_last_packets_ = 0;
   this->last_stats_usec_ = this->last_rtp_usec_;
   this->last_packet_usec_ = this->last_rtp_usec_;
@@ -607,7 +620,45 @@ void RtspAudioComponent::close_session_() {
   this->session_active_ = false;
   this->interleaved_ = false;
   this->deallocate_stream_buffers_();
+  this->publish_session_state_();
+#ifdef USE_SENSOR
+  if (this->bytes_sent_sensor_ != nullptr && this->bytes_sent_published_ != 0) {
+    this->bytes_sent_published_ = 0;
+    this->bytes_sent_sensor_->publish_state(0);
+  }
+#endif
   ESP_LOGI(TAG, "RTSP session closed");
+}
+
+void RtspAudioComponent::publish_session_state_() {
+#ifdef USE_BINARY_SENSOR
+  if (this->client_connected_bs_ != nullptr)
+    this->client_connected_bs_->publish_state(this->session_active_);
+#endif
+#ifdef USE_TEXT_SENSOR
+  if (this->client_ip_ts_ != nullptr) {
+    std::string ip;
+    if (this->session_active_ && this->control_socket_) {
+      sockaddr_storage peer{};
+      socklen_t peer_len = sizeof(peer);
+      if (this->control_socket_->getpeername(reinterpret_cast<sockaddr *>(&peer), &peer_len) == 0) {
+        char buf[INET6_ADDRSTRLEN] = {0};
+        if (peer.ss_family == AF_INET &&
+            inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in *>(&peer)->sin_addr, buf, sizeof(buf)) != nullptr) {
+          ip = buf;
+        } else if (peer.ss_family == AF_INET6 &&
+                   inet_ntop(AF_INET6, &reinterpret_cast<sockaddr_in6 *>(&peer)->sin6_addr, buf, sizeof(buf)) !=
+                       nullptr) {
+          ip = buf;
+        }
+      }
+    }
+    if (ip != this->client_ip_published_) {
+      this->client_ip_published_ = ip;
+      this->client_ip_ts_->publish_state(ip);
+    }
+  }
+#endif
 }
 
 void RtspAudioComponent::check_session_inactivity_() {
@@ -696,6 +747,15 @@ void RtspAudioComponent::log_stream_stats_(int64_t now) {
              this->ring_buffer_->available());
     this->last_stats_usec_ = now;
     this->stats_last_packets_ = this->rtp_packets_sent_;
+#ifdef USE_SENSOR
+    // Piggyback on the 5 s window so HA sees one update per period rather than
+    // one per packet. Only publish on change to avoid filling the HA recorder
+    // when the stream is paused at a stable byte count.
+    if (this->bytes_sent_sensor_ != nullptr && this->bytes_sent_ != this->bytes_sent_published_) {
+      this->bytes_sent_published_ = this->bytes_sent_;
+      this->bytes_sent_sensor_->publish_state(this->bytes_sent_);
+    }
+#endif
   }
 }
 
@@ -746,6 +806,7 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
       this->tx_buffer_.append(reinterpret_cast<const char *>(framing), INTERLEAVE_HEADER_BYTES);
       this->tx_buffer_.append(reinterpret_cast<const char *>(header), packet_len);
       this->rtp_packets_sent_++;
+      this->bytes_sent_ += packet_len;
       this->last_packet_usec_ = esp_timer_get_time();
     }
     this->rtp_seq_++;
@@ -770,6 +831,7 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   this->rtp_seq_++;
   this->rtp_ts_ += this->samples_per_packet_;
   this->rtp_packets_sent_++;
+  this->bytes_sent_ += packet_len;
   this->last_packet_usec_ = esp_timer_get_time();
   return true;
 }

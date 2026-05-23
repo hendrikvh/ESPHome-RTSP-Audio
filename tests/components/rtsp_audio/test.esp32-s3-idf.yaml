@@ -40,3 +40,18 @@ microphone:
 rtsp_audio:
   microphone:
     microphone: demo_mic
+
+binary_sensor:
+  - platform: rtsp_audio
+    client_connected:
+      name: "RTSP client connected"
+
+text_sensor:
+  - platform: rtsp_audio
+    client_ip:
+      name: "RTSP client IP"
+
+sensor:
+  - platform: rtsp_audio
+    bytes_sent:
+      name: "RTSP bytes sent"

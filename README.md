@@ -16,6 +16,7 @@ External component to stream RTSP audio using ESPHome.
 - Transport is negotiated per client at `SETUP`, so UDP and TCP clients both work with no configuration.
 - Uncompressed **L16 PCM** audio — 16 kHz mono 16-bit, RTP payload type 96 (`L16/16000/1`).
 - One client at a time.
+- **Diagnostic sensors for Home Assistant** — opt-in binary_sensor / text_sensor / sensor platforms expose client-connected state, client IP, and bytes sent so you can debug the stream from HA without needing to tail logs. See [docs/configuration.md#diagnostic-sensors](docs/configuration.md#diagnostic-sensors).
 
 ## Under the hood
 

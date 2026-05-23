@@ -14,6 +14,16 @@
 #include "esphome/core/component.h"
 #include "esphome/core/ring_buffer.h"
 
+#ifdef USE_BINARY_SENSOR
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#endif
+#ifdef USE_SENSOR
+#include "esphome/components/sensor/sensor.h"
+#endif
+#ifdef USE_TEXT_SENSOR
+#include "esphome/components/text_sensor/text_sensor.h"
+#endif
+
 namespace esphome::rtsp_audio {
 
 /// Single-client RTSP server that streams the configured `MicrophoneSource`
@@ -32,6 +42,16 @@ class RtspAudioComponent : public Component {
   void set_microphone_source(microphone::MicrophoneSource *mic) { this->mic_source_ = mic; }
   void set_listen_port(uint16_t port) { this->listen_port_ = port; }
   void set_packet_duration_ms(uint16_t ms) { this->packet_duration_ms_ = ms; }
+
+#ifdef USE_BINARY_SENSOR
+  void set_client_connected_binary_sensor(binary_sensor::BinarySensor *s) { this->client_connected_bs_ = s; }
+#endif
+#ifdef USE_TEXT_SENSOR
+  void set_client_ip_text_sensor(text_sensor::TextSensor *s) { this->client_ip_ts_ = s; }
+#endif
+#ifdef USE_SENSOR
+  void set_bytes_sent_sensor(sensor::Sensor *s) { this->bytes_sent_sensor_ = s; }
+#endif
 
  protected:
   // RTP payload type for dynamic L16 mapping in our SDP.
@@ -89,6 +109,11 @@ class RtspAudioComponent : public Component {
   /// and the periodic throughput line. Called every loop() while streaming.
   void log_stream_stats_(int64_t now);
 
+  /// Pushes the current session_active_ / client_rtp_addr_ state to whichever
+  /// of the optional client_connected / client_ip sensors the user wired up.
+  /// Called at every session edge (SETUP success, close_session_).
+  void publish_session_state_();
+
   // Configuration set by codegen / YAML.
   microphone::MicrophoneSource *mic_source_{nullptr};
   uint16_t listen_port_{8554};
@@ -132,6 +157,7 @@ class RtspAudioComponent : public Component {
 
   // Streaming diagnostics (all reset on each PLAY).
   uint32_t rtp_packets_sent_{0};
+  uint32_t bytes_sent_{0};
   uint32_t stats_last_packets_{0};
   int64_t last_stats_usec_{0};
   int64_t last_packet_usec_{0};
@@ -143,6 +169,19 @@ class RtspAudioComponent : public Component {
   uint32_t mic_callbacks_{0};
   uint32_t mic_empty_callbacks_{0};
   uint32_t mic_bytes_received_{0};
+
+#ifdef USE_BINARY_SENSOR
+  binary_sensor::BinarySensor *client_connected_bs_{nullptr};
+#endif
+#ifdef USE_TEXT_SENSOR
+  text_sensor::TextSensor *client_ip_ts_{nullptr};
+  // Last value published, so we only push on change.
+  std::string client_ip_published_;
+#endif
+#ifdef USE_SENSOR
+  sensor::Sensor *bytes_sent_sensor_{nullptr};
+  uint32_t bytes_sent_published_{UINT32_MAX};
+#endif
 
   // RTP packet buffer (header + payload). Allocated via RAMAllocator on PLAY,
   // freed on TEARDOWN. `rtp_packet_size_` is computed at setup() so we know
