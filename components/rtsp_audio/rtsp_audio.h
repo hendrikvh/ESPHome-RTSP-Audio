@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 
+#include "dc_blocker.h"
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/microphone/microphone_source.h"
 #include "esphome/components/socket/socket.h"
@@ -169,6 +170,11 @@ class RtspAudioComponent : public Component {
   uint32_t mic_callbacks_{0};
   uint32_t mic_empty_callbacks_{0};
   uint32_t mic_bytes_received_{0};
+
+  // DC blocker / high-pass filter state, applied per sample in the RTP send
+  // loop. Reset to zero at the start of each PLAY so a new session doesn't
+  // inherit the previous one's transient.
+  internal::DcBlockerState dc_blocker_state_{};
 
 #ifdef USE_BINARY_SENSOR
   binary_sensor::BinarySensor *client_connected_bs_{nullptr};

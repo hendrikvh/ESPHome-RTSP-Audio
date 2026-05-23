@@ -594,6 +594,7 @@ void RtspAudioComponent::start_streaming_() {
   this->mic_callbacks_ = 0;
   this->mic_empty_callbacks_ = 0;
   this->mic_bytes_received_ = 0;
+  this->dc_blocker_state_ = {};
 
   this->mic_source_->start();
   ESP_LOGI(TAG, "Streaming RTP: %u samples/packet (%u ms)", this->samples_per_packet_, this->packet_duration_ms_);
@@ -786,10 +787,14 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   std::memcpy(header + 4, &ts_be, sizeof(ts_be));
   std::memcpy(header + 8, &ssrc_be, sizeof(ssrc_be));
 
-  // Byteswap each int16 sample in place to get RFC 3551 L16 (network byte order).
+  // Apply the DC blocker / high-pass in the same per-sample pass that
+  // byteswaps to RFC 3551 L16 (network byte order), so we don't walk the
+  // payload buffer twice.
   auto *samples = reinterpret_cast<int16_t *>(payload);
-  for (size_t i = 0; i < this->samples_per_packet_; i++)
-    samples[i] = convert_big_endian(samples[i]);
+  for (size_t i = 0; i < this->samples_per_packet_; i++) {
+    const int16_t filtered = internal::dc_blocker_step(samples[i], this->dc_blocker_state_);
+    samples[i] = convert_big_endian(filtered);
+  }
 
   const size_t packet_len = RTP_HEADER_BYTES + payload_bytes;
 
