@@ -1,6 +1,6 @@
 #include "rtsp_audio.h"
 
-#include "internal/session_timeout.h"
+#include "session_timeout.h"
 #ifdef USE_RTSP_AUDIO
 
 #include <arpa/inet.h>
@@ -641,16 +641,15 @@ void RtspAudioComponent::publish_session_state_() {
     if (this->session_active_ && this->control_socket_) {
       sockaddr_storage peer{};
       socklen_t peer_len = sizeof(peer);
-      if (this->control_socket_->getpeername(reinterpret_cast<sockaddr *>(&peer), &peer_len) == 0) {
-        char buf[INET6_ADDRSTRLEN] = {0};
-        if (peer.ss_family == AF_INET &&
-            inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in *>(&peer)->sin_addr, buf, sizeof(buf)) != nullptr) {
+      if (this->control_socket_->getpeername(reinterpret_cast<sockaddr *>(&peer), &peer_len) == 0 &&
+          peer.ss_family == AF_INET) {
+        // IPv4 only: the rest of the component is also IPv4-only (UDP SETUP
+        // rejects IPv6, see handle_rtsp_message_), and ESP-IDF's default lwip
+        // build leaves sockaddr_in6 incomplete so a v6 branch wouldn't link.
+        // An IPv6-over-TCP-interleaved client gets reported as empty.
+        char buf[INET_ADDRSTRLEN] = {0};
+        if (inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in *>(&peer)->sin_addr, buf, sizeof(buf)) != nullptr)
           ip = buf;
-        } else if (peer.ss_family == AF_INET6 &&
-                   inet_ntop(AF_INET6, &reinterpret_cast<sockaddr_in6 *>(&peer)->sin6_addr, buf, sizeof(buf)) !=
-                       nullptr) {
-          ip = buf;
-        }
       }
     }
     if (ip != this->client_ip_published_) {

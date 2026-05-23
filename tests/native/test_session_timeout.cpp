@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "internal/session_timeout.h"
+#include "session_timeout.h"
 
 namespace esphome::rtsp_audio::internal {
 namespace {
