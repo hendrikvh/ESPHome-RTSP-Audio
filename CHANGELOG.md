@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **RTSP session inactivity timeout to better handle silent client disconnects.**
+  A client that disappears without sending `TEARDOWN` (ue to crash,
+  sleep, Wi-Fi drop) is now reaped after 60 s instead of blocking the
+  single client slot for minutes until the OS-level TCP timeout fires.
+
 ## [0.0.1] - 2026-05-23
 
 _First semi-stable release. Working nicely with BirdNET-Go so my wife is happy!_
