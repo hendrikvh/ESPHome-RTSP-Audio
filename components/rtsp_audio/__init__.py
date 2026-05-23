@@ -4,6 +4,7 @@ import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_MICROPHONE, CONF_PORT, Framework
 
 CONF_PACKET_MS = "packet_ms"
+CONF_RTSP_AUDIO_ID = "rtsp_audio_id"
 
 CODEOWNERS = ["@hendrikvh"]
 AUTO_LOAD = ["socket", "network"]

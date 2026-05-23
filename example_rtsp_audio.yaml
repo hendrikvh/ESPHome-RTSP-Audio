@@ -48,3 +48,19 @@ rtsp_audio:
     microphone: mic_inmp441
   port: 554
   packet_ms: 20
+
+# Optional diagnostic sensors
+binary_sensor:
+  - platform: rtsp_audio
+    client_connected:
+      name: "RTSP client connected"
+
+text_sensor:
+  - platform: rtsp_audio
+    client_ip:
+      name: "RTSP client IP"
+
+sensor:
+  - platform: rtsp_audio
+    bytes_sent:
+      name: "RTSP bytes sent"
