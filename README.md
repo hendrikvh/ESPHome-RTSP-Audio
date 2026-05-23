@@ -1,5 +1,7 @@
 # ESPHome RTSP Audio
 
+[![CI](https://github.com/hendrikvh/ESPHome-RTSP-Audio/actions/workflows/ci.yml/badge.svg)](https://github.com/hendrikvh/ESPHome-RTSP-Audio/actions/workflows/ci.yml)
+
 **Status:** Early development. Buggy and unreliable.
 
 External component to stream RTSP audio using ESPHome.
@@ -47,3 +49,19 @@ avoids the need for per-client packet pacing, SSRC, and sequence numbering.
 
 The microphone source is set to 16 kHz mono 16-bit so PCM passes
 straight into RTP with no resampler pulled in.
+
+## Development
+
+All tests and firmware builds run inside Docker — only `docker` is
+required on the host. Use the [`Makefile`](Makefile):
+
+```
+make help            # list targets
+make config          # esphome config on each test YAML
+make compile         # full firmware build for each test YAML
+make compile BOARD=s3-idf
+make lint            # pre-commit hooks (clang-format, ruff, ...)
+```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details and the CI matrix
+policy.

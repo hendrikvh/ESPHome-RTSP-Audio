@@ -1,0 +1,63 @@
+# Dockerised entry points for `esphome config`, `esphome compile`, and
+# `pre-commit`. The only host dependency is Docker — no Python, no
+# ESP-IDF toolchain. CI uses the same images and the same commands.
+
+ESPHOME_IMAGE   ?= esphome/esphome:2026.5.0
+PRECOMMIT_IMAGE ?= python:3.12-slim
+
+TESTS_DIR := tests/components/rtsp_audio
+YAMLS     := $(TESTS_DIR)/test.esp32-s2-idf.yaml $(TESTS_DIR)/test.esp32-s3-idf.yaml
+
+# Single-board override: `make compile BOARD=s3-idf`.
+BOARD ?=
+
+DOCKER_RUN = docker run --rm -t \
+	-v $(CURDIR):/config \
+	-w /config \
+	$(ESPHOME_IMAGE)
+
+.DEFAULT_GOAL := help
+
+.PHONY: help config compile compile-s2-idf compile-s3-idf lint clean
+
+help: ## Show this help.
+	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo ""
+	@echo "Variables:"
+	@echo "  ESPHOME_IMAGE   = $(ESPHOME_IMAGE)"
+	@echo "  PRECOMMIT_IMAGE = $(PRECOMMIT_IMAGE)"
+	@echo "  BOARD           = $(BOARD)  (override: make compile BOARD=s3-idf)"
+
+config: ## Validate every test YAML with `esphome config`.
+	@for f in $(YAMLS); do \
+		echo "==> esphome config $$f"; \
+		$(DOCKER_RUN) config $$f || exit $$?; \
+	done
+
+compile: ## Build firmware for every test YAML (or one, via BOARD=).
+	@if [ -n "$(BOARD)" ]; then \
+		f="$(TESTS_DIR)/test.esp32-$(BOARD).yaml"; \
+		echo "==> esphome compile $$f"; \
+		$(DOCKER_RUN) compile $$f; \
+	else \
+		for f in $(YAMLS); do \
+			echo "==> esphome compile $$f"; \
+			$(DOCKER_RUN) compile $$f || exit $$?; \
+		done; \
+	fi
+
+compile-s2-idf: ## Build firmware for the ESP32-S2 + ESP-IDF test config.
+	$(DOCKER_RUN) compile $(TESTS_DIR)/test.esp32-s2-idf.yaml
+
+compile-s3-idf: ## Build firmware for the ESP32-S3 + ESP-IDF test config.
+	$(DOCKER_RUN) compile $(TESTS_DIR)/test.esp32-s3-idf.yaml
+
+lint: ## Run pre-commit hooks against the whole repo.
+	docker run --rm -t \
+		-v $(CURDIR):/src \
+		-w /src \
+		$(PRECOMMIT_IMAGE) \
+		sh -c "pip install --quiet pre-commit && pre-commit run --all-files --show-diff-on-failure"
+
+clean: ## Remove .esphome/ build artefacts.
+	rm -rf .esphome
