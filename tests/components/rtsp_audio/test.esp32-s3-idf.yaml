@@ -55,3 +55,9 @@ sensor:
   - platform: rtsp_audio
     bytes_sent:
       name: "RTSP bytes sent"
+
+number:
+  - platform: rtsp_audio
+    lowcut_filter_frequency:
+      name: "RTSP Low Cut Filter Frequency"
+      unit_of_measurement: "Hz"

@@ -44,6 +44,13 @@ class RtspAudioComponent : public Component {
   void set_listen_port(uint16_t port) { this->listen_port_ = port; }
   void set_packet_duration_ms(uint16_t ms) { this->packet_duration_ms_ = ms; }
 
+  /// Updates the low-cut filter frequency (in Hz) at runtime. Called
+  /// from the bundled `number` platform when the HA slider moves and
+  /// from `Number::setup()` when the persisted value is restored on boot.
+  /// Out-of-range values are clamped to [DC_BLOCKER_MIN_CUTOFF_HZ,
+  /// DC_BLOCKER_MAX_CUTOFF_HZ].
+  void set_lowcut_filter_frequency_hz(float hz);
+
 #ifdef USE_BINARY_SENSOR
   void set_client_connected_binary_sensor(binary_sensor::BinarySensor *s) { this->client_connected_bs_ = s; }
 #endif
@@ -171,10 +178,15 @@ class RtspAudioComponent : public Component {
   uint32_t mic_empty_callbacks_{0};
   uint32_t mic_bytes_received_{0};
 
-  // DC blocker / high-pass filter state, applied per sample in the RTP send
-  // loop. Reset to zero at the start of each PLAY so a new session doesn't
-  // inherit the previous one's transient.
+  // Low-cut filter (one-pole IIR high-pass) state, applied per sample in
+  // the RTP send loop. Reset to zero at the start of each PLAY so a new
+  // session doesn't inherit the previous one's transient. The Q15
+  // coefficient and the source-of-truth frequency are held separately
+  // because they survive across sessions and track the HA-controlled
+  // value.
   internal::DcBlockerState dc_blocker_state_{};
+  int32_t lowcut_filter_r_q15_{internal::DC_BLOCKER_DEFAULT_R_Q15};
+  float lowcut_filter_frequency_hz_{static_cast<float>(internal::DC_BLOCKER_DEFAULT_CUTOFF_HZ)};
 
 #ifdef USE_BINARY_SENSOR
   binary_sensor::BinarySensor *client_connected_bs_{nullptr};

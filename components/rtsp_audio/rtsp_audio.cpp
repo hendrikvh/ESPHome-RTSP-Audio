@@ -8,6 +8,7 @@
 #include <esp_timer.h>
 #include <strings.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -158,6 +159,7 @@ void RtspAudioComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  Session timeout: %us", SESSION_TIMEOUT_SECONDS);
   ESP_LOGCONFIG(TAG, "  Audio: %u Hz / %u ch / %u bit, %u samples/pkt", this->stream_info_.get_sample_rate(),
                 this->stream_info_.get_channels(), this->stream_info_.get_bits_per_sample(), this->samples_per_packet_);
+  ESP_LOGCONFIG(TAG, "  Low-cut filter frequency: %.1f Hz", this->lowcut_filter_frequency_hz_);
 #ifdef USE_BINARY_SENSOR
   LOG_BINARY_SENSOR("  ", "Client Connected", this->client_connected_bs_);
 #endif
@@ -167,6 +169,20 @@ void RtspAudioComponent::dump_config() {
 #ifdef USE_SENSOR
   LOG_SENSOR("  ", "Bytes Sent", this->bytes_sent_sensor_);
 #endif
+}
+
+void RtspAudioComponent::set_lowcut_filter_frequency_hz(float hz) {
+  const float clamped = std::clamp(hz, static_cast<float>(internal::DC_BLOCKER_MIN_CUTOFF_HZ),
+                                   static_cast<float>(internal::DC_BLOCKER_MAX_CUTOFF_HZ));
+  // Fall back to 16 kHz before stream_info_ is populated (e.g. when the
+  // number entity's restore_value path fires during setup, before the
+  // first SETUP latches the mic shape). The audio source is constrained
+  // to 16 kHz anyway, so this matches the eventual runtime value.
+  const float sr =
+      this->stream_info_.get_sample_rate() != 0 ? static_cast<float>(this->stream_info_.get_sample_rate()) : 16000.0f;
+  this->lowcut_filter_frequency_hz_ = clamped;
+  this->lowcut_filter_r_q15_ = internal::dc_blocker_r_q15_for(clamped, sr);
+  ESP_LOGD(TAG, "Low-cut filter frequency set to %.1f Hz (R_Q15=%d)", clamped, this->lowcut_filter_r_q15_);
 }
 
 void RtspAudioComponent::loop() {
@@ -792,7 +808,7 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   // payload buffer twice.
   auto *samples = reinterpret_cast<int16_t *>(payload);
   for (size_t i = 0; i < this->samples_per_packet_; i++) {
-    const int16_t filtered = internal::dc_blocker_step(samples[i], this->dc_blocker_state_);
+    const int16_t filtered = internal::dc_blocker_step(samples[i], this->dc_blocker_state_, this->lowcut_filter_r_q15_);
     samples[i] = convert_big_endian(filtered);
   }
 
