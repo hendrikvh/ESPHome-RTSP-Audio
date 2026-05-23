@@ -3,17 +3,16 @@
 #include "esphome/core/defines.h"
 #ifdef USE_RTSP_AUDIO
 
-#include "esphome/core/component.h"
-#include "esphome/core/ring_buffer.h"
-
-#include "esphome/components/audio/audio.h"
-#include "esphome/components/microphone/microphone_source.h"
-#include "esphome/components/socket/socket.h"
-
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+
+#include "esphome/components/audio/audio.h"
+#include "esphome/components/microphone/microphone_source.h"
+#include "esphome/components/socket/socket.h"
+#include "esphome/core/component.h"
+#include "esphome/core/ring_buffer.h"
 
 namespace esphome::rtsp_audio {
 
