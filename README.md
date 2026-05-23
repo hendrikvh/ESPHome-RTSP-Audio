@@ -22,6 +22,7 @@ External component to stream RTSP audio using ESPHome.
 - **PSRAM-aware buffers.** Ring buffer and RTP packet buffer prefer external RAM and fall back to internal heap automatically on boards without PSRAM.
 - **Lazy session memory.** Audio buffers are allocated on `PLAY` and freed on `TEARDOWN`, Wi-Fi loss, or peer close, so idle nodes carry no audio buffer overhead.
 - **Self-recovery on Wi-Fi drop.** The active session is torn down cleanly and the RTSP listener stays up ready for the next client.
+- **Session inactivity timeout to handle unexpected client disconnects.** A client that vanishes without sending `TEARDOWN` ( due to crash, sleep, peer Wi-Fi drop) is reaped after 60 s so the single client slot frees up, ready for the next connection
 - **OOM-safe RTP send path.** The transmit buffer is reserved up front so no-PSRAM boards do not run out of memory mid-stream.
 
 ## Hardware
