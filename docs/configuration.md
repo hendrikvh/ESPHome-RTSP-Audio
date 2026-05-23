@@ -85,24 +85,38 @@ The timeout is a compile-time constant (`SESSION_TIMEOUT_SECONDS` in
 
 ## Audio processing
 
-### DC blocker / high-pass filter
+### Low-cut filter
 
-A one-pole IIR high-pass filter is applied to every sample in the RTP
-send path. MEMS microphones like the INMP441 ship with a small DC bias
-and pick up a lot of sub-100 Hz energy (HVAC rumble, handling noise,
-wind). That offset wastes dynamic range, and the low-frequency content
-makes any later gain stage clip earlier and thump audibly on level
-changes. Removing both at the source produces a cleaner signal for
-whatever consumes the RTSP stream (Frigate, BirdNET-Go, voice
-pipelines, NVRs).
+MEMS microphones like the INMP441 ship with a small DC offset and
+pick up a lot of low-frequency rumble (HVAC, handling, wind). That
+energy wastes dynamic range and makes downstream stages clip earlier
+and thump on level changes. The low-cut filter removes it at the
+source so consumers of the RTSP stream (Frigate, BirdNET-Go, voice
+pipelines, NVRs) get a cleaner signal to work with.
 
-The filter is currently always on and the cutoff is hard-coded to
-**200 Hz** at the 16 kHz sample rate (`DC_BLOCKER_CUTOFF_HZ` in
-[`components/rtsp_audio/dc_blocker.h`](../components/rtsp_audio/dc_blocker.h)).
-It uses integer-only Q15 math so the per-sample cost on ESP32 is
-negligible (well under 0.1 % CPU at 16 kHz mono). No YAML option is
-exposed yet — the constant is structured so it can be promoted to a
-config key later without changing the call sites.
+The filter is always on. The cut frequency defaults to **100 Hz**,
+which is low enough to leave voice fundamentals intact while still
+cutting the bulk of HVAC and handling rumble. You can tune it from
+Home Assistant by adding the optional `number` block below —
+useful for noisier rooms or non-voice sources where a more
+aggressive cut sounds better. The setting persists across reboots.
+
+```yaml
+number:
+  - platform: rtsp_audio
+    lowcut_filter_frequency:
+      name: "RTSP Low Cut Filter Frequency"
+      unit_of_measurement: "Hz"
+```
+
+Defaults: `initial_value: 100`, `min_value: 20`, `max_value: 500`,
+`step: 10`, `restore_value: true`. Values are in Hz. The entity is
+tagged `entity_category: config` so HA groups it under configuration
+rather than the main controls.
+
+If you have **more than one** `rtsp_audio:` instance, add
+`rtsp_audio_id: <component-id>` next to `platform: rtsp_audio` so the
+entity binds to the right parent.
 
 ## Diagnostic sensors
 

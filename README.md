@@ -17,7 +17,7 @@ External component to stream RTSP audio using ESPHome.
 - Uncompressed **L16 PCM** audio — 16 kHz mono 16-bit, RTP payload type 96 (`L16/16000/1`).
 - One client at a time.
 - **Diagnostic sensors for Home Assistant** — opt-in binary_sensor / text_sensor / sensor platforms expose client-connected state, client IP, and bytes sent so you can debug the stream from HA without needing to tail logs. See [docs/configuration.md#diagnostic-sensors](docs/configuration.md#diagnostic-sensors).
-- **DC blocker / high-pass filter** — always-on 200 Hz one-pole IIR high-pass strips MEMS-mic DC bias and sub-100 Hz rumble (HVAC, handling, wind) before the samples leave the device. See [docs/configuration.md#audio-processing](docs/configuration.md#audio-processing).
+- **Low-cut filter** — strips MEMS-mic DC bias and low-frequency rumble (HVAC, handling, wind) before the samples leave the device, so downstream consumers (Frigate, BirdNET-Go, voice pipelines, NVRs) get a cleaner signal with more usable dynamic range. Default cut frequency is **100 Hz** (leaves voice fundamentals intact) and is tunable from Home Assistant — raise it in noisier rooms or for non-voice sources. The setting persists across reboots. See [docs/configuration.md#audio-processing](docs/configuration.md#audio-processing).
 
 ## Under the hood
 

@@ -64,3 +64,12 @@ sensor:
   - platform: rtsp_audio
     bytes_sent:
       name: "RTSP bytes sent"
+
+# Optional: exposes the low-cut filter frequency as a slider in Home
+# Assistant. Defaults to 100 Hz; raise it in noisier rooms or for
+# non-voice sources. The value is persisted across reboots.
+number:
+  - platform: rtsp_audio
+    lowcut_filter_frequency:
+      name: "RTSP Low Cut Filter Frequency"
+      unit_of_measurement: "Hz"

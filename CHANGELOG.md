@@ -9,16 +9,19 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
-- **DC blocker / high-pass filter.** Always-on 200 Hz one-pole IIR
-  high-pass applied to every sample before it leaves the device. MEMS
-  microphones like the INMP441 ship with a small DC bias and pick up a
-  lot of sub-100 Hz energy (HVAC rumble, handling, wind). That offset
-  wastes dynamic range, and the low-frequency content makes any later
-  gain stage clip earlier and thump audibly on level changes — removing
-  both at the source gives downstream consumers (Frigate, BirdNET-Go,
-  voice pipelines, NVRs) a cleaner signal to work with. Integer-only
-  Q15 math; negligible CPU cost. Cutoff is hard-coded for now and will
-  become configurable later. See
+- **Low-cut filter (DC blocker / high-pass), tunable from Home Assistant.**
+  Configurable one-pole IIR low-cut filter applied to every sample
+  before it leaves the device. MEMS microphones like the INMP441
+  ship with a small DC bias and pick up a lot of sub-100 Hz energy
+  (HVAC rumble, handling, wind). That offset wastes dynamic range,
+  and the low-frequency content makes any later gain stage clip
+  earlier and thump audibly on level changes — removing both at the
+  source gives downstream consumers (Frigate, BirdNET-Go, voice
+  pipelines, NVRs) a cleaner signal to work with. Default frequency
+  is **100 Hz** (preserves voice fundamentals); an opt-in `number:`
+  platform exposes `lowcut_filter_frequency` to HA as a slider with
+  values from 20 Hz to 500 Hz, persisted across reboots.
+  Integer-only Q15 math in the hot path; negligible CPU cost. See
   [docs/configuration.md](docs/configuration.md#audio-processing).
 - **Diagnostic sensors for Home Assistant.** Opt-in `client_connected`
   (binary_sensor), `client_ip` (text_sensor), and `bytes_sent` (sensor)
