@@ -3,7 +3,9 @@
 # ESP-IDF toolchain. CI uses the same images and the same commands.
 
 ESPHOME_IMAGE   ?= esphome/esphome:2026.5.0
-PRECOMMIT_IMAGE ?= python:3.12-slim
+# python:3.12 (not -slim) is the buildpack-deps variant, which ships git
+# and the other dev tools pre-commit's hook envs expect.
+PRECOMMIT_IMAGE ?= python:3.12
 
 TESTS_DIR := tests/components/rtsp_audio
 YAMLS     := $(TESTS_DIR)/test.esp32-s2-idf.yaml $(TESTS_DIR)/test.esp32-s3-idf.yaml
@@ -13,6 +15,8 @@ BOARD ?=
 
 DOCKER_RUN = docker run --rm -t \
 	-v $(CURDIR):/config \
+	-v esphome-rtsp-audio-platformio:/root/.platformio \
+	-v esphome-rtsp-audio-piolibs:/root/.piolibdeps \
 	-w /config \
 	$(ESPHOME_IMAGE)
 
@@ -55,9 +59,12 @@ compile-s3-idf: ## Build firmware for the ESP32-S3 + ESP-IDF test config.
 lint: ## Run pre-commit hooks against the whole repo.
 	docker run --rm -t \
 		-v $(CURDIR):/src \
+		-v esphome-rtsp-audio-precommit:/root/.cache/pre-commit \
+		-v esphome-rtsp-audio-pip:/root/.cache/pip \
 		-w /src \
+		-e PRE_COMMIT_HOME=/root/.cache/pre-commit \
 		$(PRECOMMIT_IMAGE) \
-		sh -c "pip install --quiet pre-commit && pre-commit run --all-files --show-diff-on-failure"
+		sh -c "pip install --quiet --root-user-action=ignore pre-commit && pre-commit run --all-files --show-diff-on-failure"
 
 clean: ## Remove .esphome/ build artefacts.
 	rm -rf .esphome
