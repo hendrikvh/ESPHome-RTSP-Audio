@@ -71,6 +71,7 @@ make help            # list targets
 make config          # esphome config on each test YAML
 make compile         # full firmware build for each test YAML
 make compile BOARD=s3-idf
+make test            # host C++ unit tests (gtest, ctest) in Docker
 make lint            # pre-commit hooks (clang-format, ruff, ...)
 ```
 

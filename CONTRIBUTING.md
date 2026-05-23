@@ -15,6 +15,7 @@ not need a local Python, ESPHome, or ESP-IDF toolchain.
 | `make compile` | `esphome compile` against each test YAML. Slow (full firmware build). |
 | `make compile BOARD=s3-idf` | Build a single board. Values: `s2-idf`, `s3-idf`. |
 | `make lint` | Run `pre-commit` (clang-format, ruff, file-hygiene hooks) against the whole repo. |
+| `make test` | Build and run the host C++ unit tests (GoogleTest + `ctest`) in Docker. Seconds after the first run. |
 | `make clean` | Remove the `.esphome/` build cache. |
 
 The image tags used by `make` are pinned at the top of the
@@ -25,13 +26,24 @@ The image tags used by `make` are pinned at the top of the
 GitHub Actions runs on every push and PR
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
 
-- `pre-commit` and `esphome config` always run.
+- `pre-commit`, `esphome config`, and the host C++ unit tests
+  (`cpp-test`) always run and gate every PR.
 - `esphome compile` runs the **ESP32-S3 + ESP-IDF** target on pull
   requests, and **both** S2-IDF and S3-IDF targets on pushes to
-  `main`.
+  `main`. The compile jobs depend on `cpp-test`, so a red unit test
+  short-circuits the slow firmware build.
 
 Run `make config` and `make compile` locally before opening a PR to
 get the same answer CI will.
+
+## Host C++ unit tests
+
+Pure logic (no ESPHome / ESP-IDF deps) belongs in a small standalone
+header under `components/rtsp_audio/internal/`, with a companion
+`tests/native/test_*.cpp` covering it. The harness is GoogleTest +
+CMake; `make test` builds and runs it inside `gcc:13`. See
+[`tests/native/CMakeLists.txt`](tests/native/CMakeLists.txt) and the
+existing `test_session_timeout.cpp` as the worked example.
 
 ## Code style
 

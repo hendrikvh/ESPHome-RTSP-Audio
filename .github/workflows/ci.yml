@@ -15,6 +15,7 @@ permissions:
 env:
   # Keep in sync with Makefile.
   ESPHOME_IMAGE: esphome/esphome:2026.5.0
+  CPP_TEST_IMAGE: gcc:13
 
 jobs:
   lint:
@@ -46,10 +47,34 @@ jobs:
             "${ESPHOME_IMAGE}" \
             config "tests/components/rtsp_audio/${{ matrix.file }}"
 
+  cpp-test:
+    name: cpp unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache CMake build (incl. GoogleTest fetch)
+        uses: actions/cache@v4
+        with:
+          path: tests/native/build
+          key: cpp-test-${{ env.CPP_TEST_IMAGE }}-${{ hashFiles('tests/native/CMakeLists.txt', 'tests/native/**/*.cpp', 'tests/native/**/*.h', 'components/rtsp_audio/internal/**') }}
+          restore-keys: |
+            cpp-test-${{ env.CPP_TEST_IMAGE }}-
+      - name: Build & run host tests
+        run: |
+          docker run --rm \
+            -v "${PWD}:/src" \
+            -w /src \
+            "${CPP_TEST_IMAGE}" \
+            sh -c "apt-get update -qq && \
+                   apt-get install -y --no-install-recommends cmake git ca-certificates >/dev/null && \
+                   cmake -S tests/native -B tests/native/build -DCMAKE_BUILD_TYPE=Release && \
+                   cmake --build tests/native/build --parallel && \
+                   ctest --test-dir tests/native/build --output-on-failure"
+
   compile-pr:
     name: esphome compile (esp32-s3-idf)
     if: github.event_name == 'pull_request'
-    needs: [lint, config]
+    needs: [lint, config, cpp-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +99,7 @@ jobs:
   compile-main:
     name: esphome compile (${{ matrix.board }})
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, config]
+    needs: [lint, config, cpp-test]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
