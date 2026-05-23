@@ -1,17 +1,17 @@
 #include "rtsp_audio.h"
 #ifdef USE_RTSP_AUDIO
 
-#include "esphome/components/network/util.h"
-#include "esphome/core/helpers.h"
-#include "esphome/core/log.h"
+#include <esp_random.h>
+#include <esp_timer.h>
+#include <strings.h>
 
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
-#include <strings.h>
 
-#include <esp_random.h>
-#include <esp_timer.h>
+#include "esphome/components/network/util.h"
+#include "esphome/core/helpers.h"
+#include "esphome/core/log.h"
 
 namespace esphome::rtsp_audio {
 
@@ -121,9 +121,8 @@ void RtspAudioComponent::setup() {
   // guard keeps the audio math honest if someone bypasses validation.
   if (this->stream_info_.get_sample_rate() != 16000 || this->stream_info_.get_channels() != 1 ||
       this->stream_info_.get_bits_per_sample() != 16) {
-    ESP_LOGE(TAG, "Unsupported microphone stream: %u Hz / %u ch / %u bit",
-             this->stream_info_.get_sample_rate(), this->stream_info_.get_channels(),
-             this->stream_info_.get_bits_per_sample());
+    ESP_LOGE(TAG, "Unsupported microphone stream: %u Hz / %u ch / %u bit", this->stream_info_.get_sample_rate(),
+             this->stream_info_.get_channels(), this->stream_info_.get_bits_per_sample());
     this->mark_failed();
     return;
   }
@@ -153,9 +152,8 @@ void RtspAudioComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "RTSP audio:");
   ESP_LOGCONFIG(TAG, "  Listen port: %u", this->listen_port_);
   ESP_LOGCONFIG(TAG, "  Packet ms: %u", this->packet_duration_ms_);
-  ESP_LOGCONFIG(TAG, "  Audio: %u Hz / %u ch / %u bit, %u samples/pkt",
-                this->stream_info_.get_sample_rate(), this->stream_info_.get_channels(),
-                this->stream_info_.get_bits_per_sample(), this->samples_per_packet_);
+  ESP_LOGCONFIG(TAG, "  Audio: %u Hz / %u ch / %u bit, %u samples/pkt", this->stream_info_.get_sample_rate(),
+                this->stream_info_.get_channels(), this->stream_info_.get_bits_per_sample(), this->samples_per_packet_);
 }
 
 void RtspAudioComponent::loop() {
@@ -258,8 +256,8 @@ void RtspAudioComponent::start_listen_socket_() {
     return;
   }
 
-  ESP_LOGI(TAG, "RTSP listening on port %u (L16/%u/1, PT %u)", this->listen_port_,
-           this->stream_info_.get_sample_rate(), RTP_PAYLOAD_TYPE);
+  ESP_LOGI(TAG, "RTSP listening on port %u (L16/%u/1, PT %u)", this->listen_port_, this->stream_info_.get_sample_rate(),
+           RTP_PAYLOAD_TYPE);
 }
 
 void RtspAudioComponent::try_accept_() {
@@ -320,8 +318,8 @@ void RtspAudioComponent::drain_control_socket_() {
     if (static_cast<uint8_t>(this->rx_buffer_[0]) == '$') {
       if (this->rx_buffer_.size() < INTERLEAVE_HEADER_BYTES)
         break;  // wait for the full 4-byte framing header
-      const size_t frame_len = (static_cast<uint8_t>(this->rx_buffer_[2]) << 8) |
-                               static_cast<uint8_t>(this->rx_buffer_[3]);
+      const size_t frame_len =
+          (static_cast<uint8_t>(this->rx_buffer_[2]) << 8) | static_cast<uint8_t>(this->rx_buffer_[3]);
       if (this->rx_buffer_.size() < INTERLEAVE_HEADER_BYTES + frame_len)
         break;  // wait for the full frame
       this->rx_buffer_.erase(0, INTERLEAVE_HEADER_BYTES + frame_len);
@@ -450,11 +448,11 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
       this->interleaved_ = true;
       this->rtp_channel_ = tr.rtp_channel;
       this->rtp_socket_.reset();
-      this->send_rtsp_response_(str_sprintf(
-          "RTSP/1.0 200 OK\r\n%sSession: %u;timeout=120\r\n"
-          "Transport: RTP/AVP/TCP;unicast;interleaved=%u-%u\r\n\r\n",
-          cseq_hdr.c_str(), this->session_id_, static_cast<unsigned>(tr.rtp_channel),
-          static_cast<unsigned>(tr.rtcp_channel)));
+      this->send_rtsp_response_(
+          str_sprintf("RTSP/1.0 200 OK\r\n%sSession: %u;timeout=120\r\n"
+                      "Transport: RTP/AVP/TCP;unicast;interleaved=%u-%u\r\n\r\n",
+                      cseq_hdr.c_str(), this->session_id_, static_cast<unsigned>(tr.rtp_channel),
+                      static_cast<unsigned>(tr.rtcp_channel)));
       this->session_active_ = true;
       ESP_LOGI(TAG, "SETUP: TCP-interleaved transport (RTP channel %u)", static_cast<unsigned>(tr.rtp_channel));
       return true;
@@ -470,8 +468,9 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
       return false;
     }
     if (peer.ss_family != AF_INET) {
-      ESP_LOGW(TAG, "Rejecting SETUP 461: UDP transport needs an IPv4 client; "
-                    "an IPv6 client can use TCP-interleaved (RTP/AVP/TCP) instead");
+      ESP_LOGW(TAG,
+               "Rejecting SETUP 461: UDP transport needs an IPv4 client; "
+               "an IPv6 client can use TCP-interleaved (RTP/AVP/TCP) instead");
       this->send_rtsp_response_(str_sprintf("RTSP/1.0 461 Unsupported Transport\r\n%s\r\n", cseq_hdr.c_str()));
       return true;
     }
@@ -504,11 +503,11 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
     if (this->rtp_socket_->getsockname(reinterpret_cast<sockaddr *>(&local), &ll) == 0 && local.ss_family == AF_INET)
       this->server_rtp_port_ = ntohs(reinterpret_cast<sockaddr_in *>(&local)->sin_port);
 
-    this->send_rtsp_response_(str_sprintf(
-        "RTSP/1.0 200 OK\r\n%sSession: %u;timeout=120\r\n"
-        "Transport: RTP/AVP;unicast;client_port=%u-%u;server_port=%u-%u\r\n\r\n",
-        cseq_hdr.c_str(), this->session_id_, tr.client_rtp_port, tr.client_rtcp_port, this->server_rtp_port_,
-        this->server_rtp_port_ + 1));
+    this->send_rtsp_response_(
+        str_sprintf("RTSP/1.0 200 OK\r\n%sSession: %u;timeout=120\r\n"
+                    "Transport: RTP/AVP;unicast;client_port=%u-%u;server_port=%u-%u\r\n\r\n",
+                    cseq_hdr.c_str(), this->session_id_, tr.client_rtp_port, tr.client_rtcp_port,
+                    this->server_rtp_port_, this->server_rtp_port_ + 1));
     this->session_active_ = true;
     return true;
   }
@@ -525,8 +524,8 @@ bool RtspAudioComponent::handle_rtsp_message_(const std::string &request) {
       rtp_info = str_sprintf("RTP-Info: url=%s;seq=%u;rtptime=%u\r\n", this->track_url_.c_str(),
                              static_cast<unsigned>(this->rtp_seq_), static_cast<unsigned>(this->rtp_ts_));
     }
-    this->send_rtsp_response_(
-        str_sprintf("RTSP/1.0 200 OK\r\n%sSession: %u\r\n%s\r\n", cseq_hdr.c_str(), this->session_id_, rtp_info.c_str()));
+    this->send_rtsp_response_(str_sprintf("RTSP/1.0 200 OK\r\n%sSession: %u\r\n%s\r\n", cseq_hdr.c_str(),
+                                          this->session_id_, rtp_info.c_str()));
     return true;
   }
 
@@ -621,8 +620,7 @@ void RtspAudioComponent::maybe_send_rtp_() {
   // average send rate matches the audio production rate regardless of loop().
   constexpr int MAX_PACKETS_PER_LOOP = 8;
   int sent = 0;
-  while (sent < MAX_PACKETS_PER_LOOP &&
-         now - this->last_rtp_usec_ >= static_cast<int64_t>(this->rtp_interval_usec_)) {
+  while (sent < MAX_PACKETS_PER_LOOP && now - this->last_rtp_usec_ >= static_cast<int64_t>(this->rtp_interval_usec_)) {
     if (!this->send_one_rtp_packet_())
       break;  // no buffered audio yet / socket busy: retry next loop, don't advance deadline
     this->last_rtp_usec_ += this->rtp_interval_usec_;
@@ -632,8 +630,7 @@ void RtspAudioComponent::maybe_send_rtp_() {
   // Hit the per-loop cap and still behind (a long stall, e.g. a flash write).
   // Snap the deadline to now so we don't burst MAX_PACKETS_PER_LOOP every loop
   // indefinitely; the backlog is dropped in favour of staying near real time.
-  if (sent == MAX_PACKETS_PER_LOOP &&
-      now - this->last_rtp_usec_ > static_cast<int64_t>(this->rtp_interval_usec_)) {
+  if (sent == MAX_PACKETS_PER_LOOP && now - this->last_rtp_usec_ > static_cast<int64_t>(this->rtp_interval_usec_)) {
     ESP_LOGW(TAG, "RTP pacing behind by >%d packets; resyncing", MAX_PACKETS_PER_LOOP);
     this->last_rtp_usec_ = now;
   }
@@ -647,13 +644,12 @@ void RtspAudioComponent::log_stream_stats_(int64_t now) {
   if (this->rtp_packets_sent_ > 0 && !this->first_packet_logged_) {
     this->first_packet_logged_ = true;
     if (this->interleaved_) {
-      ESP_LOGI(TAG, "First RTP packet sent (TCP-interleaved, channel %u)",
-               static_cast<unsigned>(this->rtp_channel_));
+      ESP_LOGI(TAG, "First RTP packet sent (TCP-interleaved, channel %u)", static_cast<unsigned>(this->rtp_channel_));
     } else {
       auto *addr4 = reinterpret_cast<sockaddr_in *>(&this->client_rtp_addr_);
       const uint32_t ip = ntohl(addr4->sin_addr.s_addr);
-      ESP_LOGI(TAG, "First RTP packet sent to %u.%u.%u.%u:%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF,
-               (ip >> 8) & 0xFF, ip & 0xFF, ntohs(addr4->sin_port));
+      ESP_LOGI(TAG, "First RTP packet sent to %u.%u.%u.%u:%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF,
+               ip & 0xFF, ntohs(addr4->sin_port));
     }
   }
 
@@ -680,8 +676,8 @@ void RtspAudioComponent::log_stream_stats_(int64_t now) {
   // 20 ms packet cadence (50 packets/s).
   if (now - this->last_stats_usec_ >= 5'000'000) {
     const uint32_t pkts = this->rtp_packets_sent_ - this->stats_last_packets_;
-    ESP_LOGD(TAG, "RTP stream: %u packets/5s; mic: %u callbacks, %u empty, %u bytes; ring buffer %zu bytes",
-             pkts, this->mic_callbacks_, this->mic_empty_callbacks_, this->mic_bytes_received_,
+    ESP_LOGD(TAG, "RTP stream: %u packets/5s; mic: %u callbacks, %u empty, %u bytes; ring buffer %zu bytes", pkts,
+             this->mic_callbacks_, this->mic_empty_callbacks_, this->mic_bytes_received_,
              this->ring_buffer_->available());
     this->last_stats_usec_ = now;
     this->stats_last_packets_ = this->rtp_packets_sent_;
@@ -743,8 +739,7 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   }
 
   // UDP transport.
-  ssize_t sent = this->rtp_socket_->sendto(header, packet_len, 0,
-                                           reinterpret_cast<sockaddr *>(&this->client_rtp_addr_),
+  ssize_t sent = this->rtp_socket_->sendto(header, packet_len, 0, reinterpret_cast<sockaddr *>(&this->client_rtp_addr_),
                                            sizeof(sockaddr_in));
   if (sent < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK)

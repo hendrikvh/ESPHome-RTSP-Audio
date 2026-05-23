@@ -17,13 +17,13 @@ External component to stream RTSP audio using ESPHome.
 ## Hardware
 
 A **dual-core ESP32 is recommended, e.g. the ESP32-S3.** On single-core chips
-(such as the ESP32-S2 that I'm testing on) the Wi-Fi stack and the audio loop 
+(such as the ESP32-S2 that I'm testing on) the Wi-Fi stack and the audio loop
 share one CPU core, so occasional brief (~1 s) audio gaps occur when Wi-Fi gets
 busy. A dual-core chip runs Wi-Fi and the audio loop on separate cores and avoids this.
 
 ### Tested with
 
-* [ESP32-S2](https://www.wemos.cc/en/latest/s2/s2_mini.html) 
+* [ESP32-S2](https://www.wemos.cc/en/latest/s2/s2_mini.html)
 with [INMP441 MEMS microphone module](https://easyelecmodule.com/a-complete-guide-to-the-inmp441-i2s-microphone/).
 
 ## Goals

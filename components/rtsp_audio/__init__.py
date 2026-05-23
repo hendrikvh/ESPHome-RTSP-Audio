@@ -18,7 +18,9 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): cv.declare_id(RtspAudioComponent),
             cv.Optional(CONF_PORT, default=554): cv.port,
             cv.Optional(CONF_PACKET_MS, default=20): cv.int_range(10, 100),
-            cv.Optional(CONF_MICROPHONE, default={}): microphone.microphone_source_schema(
+            cv.Optional(
+                CONF_MICROPHONE, default={}
+            ): microphone.microphone_source_schema(
                 min_bits_per_sample=16,
                 max_bits_per_sample=16,
                 min_channels=1,
@@ -32,7 +34,9 @@ CONFIG_SCHEMA = cv.All(
 
 FINAL_VALIDATE_SCHEMA = cv.Schema(
     {
-        cv.Optional(CONF_MICROPHONE): microphone.final_validate_microphone_source_schema(
+        cv.Optional(
+            CONF_MICROPHONE
+        ): microphone.final_validate_microphone_source_schema(
             "rtsp_audio", sample_rate=16000
         ),
     },
