@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/hendrikvh/ESPHome-RTSP-Audio/actions/workflows/ci.yml/badge.svg)](https://github.com/hendrikvh/ESPHome-RTSP-Audio/actions/workflows/ci.yml)
 
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 **Status:** Early development. Buggy and unreliable.
 
 External component to stream RTSP audio using ESPHome.
@@ -13,6 +15,13 @@ External component to stream RTSP audio using ESPHome.
 - Transport is negotiated per client at `SETUP`, so UDP and TCP clients both work with no configuration.
 - Uncompressed **L16 PCM** audio — 16 kHz mono 16-bit, RTP payload type 96 (`L16/16000/1`).
 - One client at a time.
+
+## Under the hood
+
+- **PSRAM-aware buffers.** Ring buffer and RTP packet buffer prefer external RAM and fall back to internal heap automatically on boards without PSRAM.
+- **Lazy session memory.** Audio buffers are allocated on `PLAY` and freed on `TEARDOWN`, Wi-Fi loss, or peer close, so idle nodes carry no audio buffer overhead.
+- **Self-recovery on Wi-Fi drop.** The active session is torn down cleanly and the RTSP listener stays up ready for the next client.
+- **OOM-safe RTP send path.** The transmit buffer is reserved up front so no-PSRAM boards do not run out of memory mid-stream.
 
 ## Hardware
 

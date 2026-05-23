@@ -22,8 +22,9 @@ ota:
 
 external_components:
   - source:
-      type: local
-      path: components
+      type: git
+      url: https://github.com/hendrikvh/ESPHome-RTSP-Audio
+      ref: main
     components: [ rtsp_audio ]
 
 i2s_audio:
