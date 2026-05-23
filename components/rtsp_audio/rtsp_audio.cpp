@@ -1,4 +1,6 @@
 #include "rtsp_audio.h"
+
+#include "internal/session_timeout.h"
 #ifdef USE_RTSP_AUDIO
 
 #include <esp_random.h>
@@ -609,9 +611,7 @@ void RtspAudioComponent::close_session_() {
 }
 
 void RtspAudioComponent::check_session_inactivity_() {
-  const int64_t now = esp_timer_get_time();
-  constexpr int64_t LIMIT_USEC = static_cast<int64_t>(SESSION_TIMEOUT_SECONDS) * 1'000'000;
-  if (now - this->last_rtsp_activity_usec_ <= LIMIT_USEC)
+  if (!internal::session_is_idle(esp_timer_get_time(), this->last_rtsp_activity_usec_, SESSION_TIMEOUT_SECONDS))
     return;
   ESP_LOGW(TAG, "RTSP session idle > %us; closing", SESSION_TIMEOUT_SECONDS);
   this->close_session_();
