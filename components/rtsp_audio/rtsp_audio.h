@@ -10,13 +10,13 @@
 #include <string>
 
 #include "dc_blocker.h"
-#include "gain.h"
-#include "high_cut.h"
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/microphone/microphone_source.h"
 #include "esphome/components/socket/socket.h"
 #include "esphome/core/component.h"
 #include "esphome/core/ring_buffer.h"
+#include "gain.h"
+#include "high_cut.h"
 
 #ifdef USE_BINARY_SENSOR
 #include "esphome/components/binary_sensor/binary_sensor.h"
