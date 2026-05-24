@@ -21,19 +21,19 @@ void RtspAudioLowCutFilterNumber::setup() {
   // value before we publish to HA; otherwise a brief transient could
   // hit the wire at the default frequency.
   if (this->parent_ != nullptr)
-    this->parent_->set_lowcut_filter_frequency_hz(value);
+    this->parent_->set_low_cut_frequency_hz(value);
   this->publish_state(value);
 }
 
 void RtspAudioLowCutFilterNumber::dump_config() {
-  LOG_NUMBER("", "RTSP audio low-cut filter frequency", this);
+  LOG_NUMBER("", "Low cut frequency", this);
   ESP_LOGCONFIG(TAG, "  Initial value: %.1f Hz", this->initial_value_);
   ESP_LOGCONFIG(TAG, "  Restore value: %s", YESNO(this->restore_value_));
 }
 
 void RtspAudioLowCutFilterNumber::control(float value) {
   if (this->parent_ != nullptr)
-    this->parent_->set_lowcut_filter_frequency_hz(value);
+    this->parent_->set_low_cut_frequency_hz(value);
   this->publish_state(value);
   if (this->restore_value_)
     this->pref_.save(&value);
@@ -48,19 +48,19 @@ void RtspAudioHighCutFilterNumber::setup() {
       value = stored;
   }
   if (this->parent_ != nullptr)
-    this->parent_->set_highcut_filter_frequency_hz(value);
+    this->parent_->set_high_cut_frequency_hz(value);
   this->publish_state(value);
 }
 
 void RtspAudioHighCutFilterNumber::dump_config() {
-  LOG_NUMBER("", "RTSP audio high-cut filter frequency", this);
+  LOG_NUMBER("", "High cut frequency", this);
   ESP_LOGCONFIG(TAG, "  Initial value: %.1f Hz", this->initial_value_);
   ESP_LOGCONFIG(TAG, "  Restore value: %s", YESNO(this->restore_value_));
 }
 
 void RtspAudioHighCutFilterNumber::control(float value) {
   if (this->parent_ != nullptr)
-    this->parent_->set_highcut_filter_frequency_hz(value);
+    this->parent_->set_high_cut_frequency_hz(value);
   this->publish_state(value);
   if (this->restore_value_)
     this->pref_.save(&value);

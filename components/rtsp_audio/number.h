@@ -14,7 +14,7 @@ namespace esphome::rtsp_audio {
 /// Home Assistant `number` entity bound to the parent RTSP component's
 /// low-cut filter (a.k.a. DC blocker / high-pass) cutoff frequency.
 /// Restoring the persisted value on boot calls
-/// `parent_->set_lowcut_filter_frequency_hz()` so the filter starts at
+/// `parent_->set_low_cut_frequency_hz()` so the filter starts at
 /// the last-known cutoff without any user action.
 class RtspAudioLowCutFilterNumber : public number::Number, public Component {
  public:
