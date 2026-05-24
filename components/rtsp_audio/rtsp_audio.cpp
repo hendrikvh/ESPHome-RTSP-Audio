@@ -161,6 +161,11 @@ void RtspAudioComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  Audio: %u Hz / %u ch / %u bit, %u samples/pkt", this->stream_info_.get_sample_rate(),
                 this->stream_info_.get_channels(), this->stream_info_.get_bits_per_sample(), this->samples_per_packet_);
   ESP_LOGCONFIG(TAG, "  Low-cut filter frequency: %.1f Hz", this->lowcut_filter_frequency_hz_);
+  if (this->highcut_filter_a_q15_ == internal::HIGH_CUT_A_Q15_OFF) {
+    ESP_LOGCONFIG(TAG, "  High-cut filter: off");
+  } else {
+    ESP_LOGCONFIG(TAG, "  High-cut filter frequency: %.1f Hz", this->highcut_filter_frequency_hz_);
+  }
   {
     const int32_t q8 = this->gain_q8_.load(std::memory_order_relaxed);
     const float linear = q8 / 256.0f;
@@ -189,6 +194,24 @@ void RtspAudioComponent::set_lowcut_filter_frequency_hz(float hz) {
   this->lowcut_filter_frequency_hz_ = clamped;
   this->lowcut_filter_r_q15_ = internal::dc_blocker_r_q15_for(clamped, sr);
   ESP_LOGD(TAG, "Low-cut filter frequency set to %.1f Hz (R_Q15=%d)", clamped, this->lowcut_filter_r_q15_);
+}
+
+void RtspAudioComponent::set_highcut_filter_frequency_hz(float hz) {
+  const float clamped = std::clamp(hz, static_cast<float>(internal::HIGH_CUT_MIN_CUTOFF_HZ),
+                                   static_cast<float>(internal::HIGH_CUT_MAX_CUTOFF_HZ));
+  // Same stream_info_ fallback as the low-cut: the number entity's
+  // restore_value path can fire during setup, before the first SETUP
+  // latches the mic shape. Our audio source is constrained to 16 kHz
+  // anyway, so this matches the eventual runtime value.
+  const float sr =
+      this->stream_info_.get_sample_rate() != 0 ? static_cast<float>(this->stream_info_.get_sample_rate()) : 16000.0f;
+  this->highcut_filter_frequency_hz_ = clamped;
+  this->highcut_filter_a_q15_ = internal::high_cut_a_q15_for(clamped, sr);
+  if (this->highcut_filter_a_q15_ == internal::HIGH_CUT_A_Q15_OFF) {
+    ESP_LOGD(TAG, "High-cut filter off (cutoff %.1f Hz)", clamped);
+  } else {
+    ESP_LOGD(TAG, "High-cut filter frequency set to %.1f Hz (A_Q15=%d)", clamped, this->highcut_filter_a_q15_);
+  }
 }
 
 void RtspAudioComponent::set_gain_db(float db) {
@@ -624,6 +647,7 @@ void RtspAudioComponent::start_streaming_() {
   this->mic_empty_callbacks_ = 0;
   this->mic_bytes_received_ = 0;
   this->dc_blocker_state_ = {};
+  this->high_cut_state_ = {};
 
   this->mic_source_->start();
   ESP_LOGI(TAG, "Streaming RTP: %u samples/packet (%u ms)", this->samples_per_packet_, this->packet_duration_ms_);
@@ -816,13 +840,13 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   std::memcpy(header + 4, &ts_be, sizeof(ts_be));
   std::memcpy(header + 8, &ssrc_be, sizeof(ssrc_be));
 
-  // Run the per-sample DSP chain (low-cut → gain → L16 byteswap) in one
-  // pass over the payload. The pipeline header centralises the stage
-  // order so future stages (soft limiter, gain smoothing) don't touch
-  // this file.
+  // Run the per-sample DSP chain (low-cut → high-cut → gain → L16
+  // byteswap) in one pass over the payload. The pipeline header
+  // centralises the stage order so future stages (soft limiter, gain
+  // smoothing) don't touch this file.
   internal::process_l16_payload_inplace(reinterpret_cast<int16_t *>(payload), this->samples_per_packet_,
-                                        this->dc_blocker_state_, this->lowcut_filter_r_q15_,
-                                        this->gain_q8_.load(std::memory_order_relaxed));
+                                        this->dc_blocker_state_, this->lowcut_filter_r_q15_, this->high_cut_state_,
+                                        this->highcut_filter_a_q15_, this->gain_q8_.load(std::memory_order_relaxed));
 
   const size_t packet_len = RTP_HEADER_BYTES + payload_bytes;
 

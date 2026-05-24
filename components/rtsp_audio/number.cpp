@@ -39,6 +39,33 @@ void RtspAudioLowCutFilterNumber::control(float value) {
     this->pref_.save(&value);
 }
 
+void RtspAudioHighCutFilterNumber::setup() {
+  float value = this->initial_value_;
+  if (this->restore_value_) {
+    this->pref_ = global_preferences->make_preference<float>(this->get_object_id_hash());
+    float stored;
+    if (this->pref_.load(&stored))
+      value = stored;
+  }
+  if (this->parent_ != nullptr)
+    this->parent_->set_highcut_filter_frequency_hz(value);
+  this->publish_state(value);
+}
+
+void RtspAudioHighCutFilterNumber::dump_config() {
+  LOG_NUMBER("", "RTSP audio high-cut filter frequency", this);
+  ESP_LOGCONFIG(TAG, "  Initial value: %.1f Hz", this->initial_value_);
+  ESP_LOGCONFIG(TAG, "  Restore value: %s", YESNO(this->restore_value_));
+}
+
+void RtspAudioHighCutFilterNumber::control(float value) {
+  if (this->parent_ != nullptr)
+    this->parent_->set_highcut_filter_frequency_hz(value);
+  this->publish_state(value);
+  if (this->restore_value_)
+    this->pref_.save(&value);
+}
+
 void RtspAudioGainDbNumber::setup() {
   float value = this->initial_value_;
   if (this->restore_value_) {
