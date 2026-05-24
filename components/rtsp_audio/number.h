@@ -36,11 +36,11 @@ class RtspAudioLowCutFilterNumber : public number::Number, public Component {
 };
 
 /// Home Assistant `number` entity bound to the parent RTSP component's
-/// software input gain. Mirrors `RtspAudioLowCutFilterNumber`: the
-/// persisted value is pushed to the parent via `set_gain()` before being
-/// published, so the very first RTP packet of a session already uses the
-/// restored gain.
-class RtspAudioGainNumber : public number::Number, public Component {
+/// software input gain, in dB. Mirrors `RtspAudioLowCutFilterNumber`:
+/// the persisted dB value is pushed to the parent via `set_gain_db()`
+/// before being published, so the very first RTP packet of a session
+/// already uses the restored gain.
+class RtspAudioGainDbNumber : public number::Number, public Component {
  public:
   void set_parent(RtspAudioComponent *p) { this->parent_ = p; }
   void set_initial_value(float v) { this->initial_value_ = v; }
@@ -54,7 +54,7 @@ class RtspAudioGainNumber : public number::Number, public Component {
   void control(float value) override;
 
   RtspAudioComponent *parent_{nullptr};
-  float initial_value_{1.0f};
+  float initial_value_{0.0f};  // 0 dB == unity
   bool restore_value_{true};
   ESPPreferenceObject pref_;
 };

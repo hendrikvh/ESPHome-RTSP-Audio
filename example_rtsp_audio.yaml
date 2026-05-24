@@ -68,12 +68,14 @@ sensor:
 # Optional sliders in Home Assistant. Both persist across reboots.
 #   - lowcut_filter_frequency: low-cut filter cutoff in Hz, default 100.
 #     Raise it in noisier rooms or for non-voice sources.
-#   - gain: linear input gain, default 1.0 (bit-identical passthrough).
-#     Range 0.1–16.0. Saturating clamp on overflow; never wraps.
+#   - gain_db: input gain in decibels, default 0 dB (bit-identical
+#     passthrough). Range -20 to +40 dB. Saturating clamp on overflow;
+#     never wraps.
 number:
   - platform: rtsp_audio
     lowcut_filter_frequency:
       name: "RTSP Low Cut Filter Frequency"
       unit_of_measurement: "Hz"
-    gain:
+    gain_db:
       name: "Audio gain"
+      unit_of_measurement: "dB"

@@ -161,7 +161,11 @@ void RtspAudioComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  Audio: %u Hz / %u ch / %u bit, %u samples/pkt", this->stream_info_.get_sample_rate(),
                 this->stream_info_.get_channels(), this->stream_info_.get_bits_per_sample(), this->samples_per_packet_);
   ESP_LOGCONFIG(TAG, "  Low-cut filter frequency: %.1f Hz", this->lowcut_filter_frequency_hz_);
-  ESP_LOGCONFIG(TAG, "  Input gain: %.2fx", this->gain_q8_.load(std::memory_order_relaxed) / 256.0f);
+  {
+    const int32_t q8 = this->gain_q8_.load(std::memory_order_relaxed);
+    const float linear = q8 / 256.0f;
+    ESP_LOGCONFIG(TAG, "  Input gain: %+.1f dB (%.2fx, Q8=%d)", internal::linear_to_db(linear), linear, q8);
+  }
 #ifdef USE_BINARY_SENSOR
   LOG_BINARY_SENSOR("  ", "Client Connected", this->client_connected_bs_);
 #endif
@@ -187,10 +191,11 @@ void RtspAudioComponent::set_lowcut_filter_frequency_hz(float hz) {
   ESP_LOGD(TAG, "Low-cut filter frequency set to %.1f Hz (R_Q15=%d)", clamped, this->lowcut_filter_r_q15_);
 }
 
-void RtspAudioComponent::set_gain(float linear) {
-  const int32_t q8 = internal::gain_q8_for(linear);
+void RtspAudioComponent::set_gain_db(float db) {
+  const int32_t q8 = internal::gain_q8_for_db(db);
   this->gain_q8_.store(q8, std::memory_order_relaxed);
-  ESP_LOGD(TAG, "Input gain set to %.2fx (Q8=%d)", q8 / 256.0f, q8);
+  const float linear = q8 / 256.0f;
+  ESP_LOGD(TAG, "Input gain set to %+.1f dB (%.2fx, Q8=%d)", db, linear, q8);
 }
 
 void RtspAudioComponent::loop() {

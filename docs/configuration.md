@@ -94,7 +94,7 @@ Microphone → Ring buffer → Low-cut filter → Input gain → L16 byteswap �
 The low-cut runs first so DC and rumble don't eat headroom before the
 gain stage. Gain sits immediately before the L16 byteswap so what HA
 sees on the slider is exactly what leaves the wire. At default settings
-(gain = 1.0) the gain stage is skipped and the byte stream is
+(gain = 0 dB) the gain stage is skipped and the byte stream is
 bit-identical to a build without the gain feature.
 
 ### Low-cut filter
@@ -137,34 +137,46 @@ RTP byteswap. Lets you lift the level of a quiet mic, or back it off
 for a loud source, without re-flashing or touching the I²S `gain_factor`
 (which rounds at the source). The setting persists across reboots.
 
-The default is **1.0** (unity), and at exactly 1.0 the gain stage is
-skipped entirely — the byte stream is bit-identical to a build without
-the gain feature. On overflow the output is saturating-clamped to the
-int16 range, so loud passages compress flat rather than wrapping into
-scratchy noise. (For a soft knee instead of hard saturation, see the
-"Soft limiter" item on the roadmap.)
+The slider is in **decibels**, so each step is a uniform perceptual
+change. The default is **0 dB** (unity); at exactly 0 dB the gain
+stage is skipped entirely and the byte stream is bit-identical to a
+build without the gain feature. On overflow the output is
+saturating-clamped to the int16 range, so loud passages compress flat
+rather than wrapping into scratchy noise. (For a soft knee instead of
+hard saturation, see the "Soft limiter" item on the roadmap.)
 
-> **Note:** the value is a **linear multiplier**, not dB. `2.0` is
-> twice the amplitude (≈ +6 dB), `0.5` is half (≈ −6 dB). A dB display
-> for HA is on the todo list.
+Internally the audio pipeline still multiplies by a Q8 linear
+coefficient — dB is just the unit the HA entity speaks. The device
+boot log shows all three representations, e.g.
+`Input gain: +6.0 dB (2.00x, Q8=512)`, for debugging.
+
+| Slider | Linear |
+|---|---|
+| −20 dB | 0.1× |
+| −6 dB | ≈ 0.5× |
+| 0 dB | 1.0× (bit-identical fast path) |
+| +6 dB | ≈ 2.0× |
+| +20 dB | 10× |
+| +40 dB | 100× |
 
 ```yaml
 number:
   - platform: rtsp_audio
-    gain:
+    gain_db:
       name: "Audio gain"
+      unit_of_measurement: "dB"
 ```
 
-Defaults: `initial_value: 1.0`, `min_value: 0.1`, `max_value: 80.0`,
-`step: 0.1`, `restore_value: true`. The entity is tagged
+Defaults: `initial_value: 0.0`, `min_value: -20.0`, `max_value: 40.0`,
+`step: 1.0`, `restore_value: true`. The entity is tagged
 `entity_category: config` so HA groups it with the low-cut filter under
 configuration rather than the main controls.
 
-The 80× ceiling is deliberately generous so a very quiet MEMS mic in a
-large room can be lifted to a usable level. Past roughly 8× you'll
-typically run into the saturating clamp on transients well before you
-run out of slider — that's the point at which the planned soft limiter
-becomes worth wiring in.
+The +40 dB ceiling (100× linear) is deliberately generous so a very
+quiet MEMS mic in a large room can be lifted to a usable level. Above
+~+18 dB you'll typically run into the saturating clamp on transients
+well before you run out of slider — that's the point at which the
+planned soft limiter becomes worth wiring in.
 
 The gain and low-cut entities share a single `platform: rtsp_audio`
 block — declare them under the same list item:
@@ -175,8 +187,9 @@ number:
     lowcut_filter_frequency:
       name: "RTSP Low Cut Filter Frequency"
       unit_of_measurement: "Hz"
-    gain:
+    gain_db:
       name: "Audio gain"
+      unit_of_measurement: "dB"
 ```
 
 ## Diagnostic sensors
