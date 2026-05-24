@@ -17,6 +17,7 @@ External component to stream RTSP audio using ESPHome.
 - Uncompressed **L16 PCM** audio — 16 kHz mono 16-bit, RTP payload type 96 (`L16/16000/1`).
 - One client at a time.
 - **Diagnostic sensors for Home Assistant** — opt-in binary_sensor / text_sensor / sensor platforms expose client-connected state, client IP, and bytes sent so you can debug the stream from HA without needing to tail logs. See [docs/configuration.md#diagnostic-sensors](docs/configuration.md#diagnostic-sensors).
+- **CPU-use sensor** — opt-in `cpu_use_pct` sensor reports the percentage of wall-clock that the RTSP audio path (main `loop()` + mic data callback) is consuming, so you can see whether your ESP chip has headroom for the current sample rate, DSP settings, and enabled features — and decide whether you need a more powerful chip or have to disable a feature. **Interpretation:** under ~30 % is plenty of headroom; 30–70 % is normal; 70–90 % means brief audio glitches under Wi-Fi load are possible and you should consider simplifying the DSP; sustained >90 % (and especially 100 %) means the chip is at its limit — upgrade to a more capable board (e.g. ESP32-S2 → ESP32-S3) or back off DSP / sample rate. Excludes Wi-Fi/LwIP, the I²S driver, and other ESPHome components, so treat it as a lower bound on total system load. See [docs/configuration.md#diagnostic-sensors](docs/configuration.md#diagnostic-sensors).
 - **Low-cut filter** — strips MEMS-mic DC bias and low-frequency rumble (HVAC, handling, wind) before the samples leave the device, so downstream consumers (Frigate, BirdNET-Go, voice pipelines, NVRs) get a cleaner signal with more usable dynamic range. Default cut frequency is **100 Hz** (leaves voice fundamentals intact) and is tunable from Home Assistant — raise it in noisier rooms or for non-voice sources. The setting persists across reboots. See [docs/configuration.md#audio-processing](docs/configuration.md#audio-processing).
 - **Input gain in dB, tunable from Home Assistant** — software level adjustment applied after the low-cut filter. Default is **0 dB** (unity, bit-identical to a no-gain build); the slider spans **−20 dB to +40 dB** (1 dB steps), persisted across reboots. Overflow is saturating-clamped, never wrapped. See [docs/configuration.md#input-gain](docs/configuration.md#input-gain).
 
@@ -34,6 +35,12 @@ A **dual-core ESP32 is recommended, e.g. the ESP32-S3.** On single-core chips
 (such as the ESP32-S2 that I'm testing on) the Wi-Fi stack and the audio loop
 share one CPU core, so occasional brief (~1 s) audio gaps occur when Wi-Fi gets
 busy. A dual-core chip runs Wi-Fi and the audio loop on separate cores and avoids this.
+
+Enable the `cpu_use_pct` diagnostic sensor (see
+[docs/configuration.md#diagnostic-sensors](docs/configuration.md#diagnostic-sensors))
+to confirm whether your chosen board has enough headroom for your configuration
+before committing to it — that's the recommended way to decide between staying
+on what you have, upgrading to an ESP32-S3, or disabling features.
 
 ### Tested with
 

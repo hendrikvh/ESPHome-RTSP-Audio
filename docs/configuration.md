@@ -232,7 +232,7 @@ number:
 ## Diagnostic sensors
 
 A small, opinionated set of stream state is exposed to Home Assistant
-via standard ESPHome sensor platforms. All three are **opt-in** — the
+via standard ESPHome sensor platforms. All entries are **opt-in** — the
 component compiles them out unless you reference it from a
 `binary_sensor:` / `text_sensor:` / `sensor:` block.
 
@@ -241,14 +241,15 @@ component compiles them out unless you reference it from a
 | `client_connected` | binary_sensor | `on` while an RTSP session is active (between `SETUP` and `TEARDOWN` / network loss / 60 s idle timeout). | Edge-triggered at each session boundary. |
 | `client_ip` | text_sensor | IP address of the currently connected client, empty when none. | Edge-triggered at each session boundary. |
 | `bytes_sent` | sensor | Cumulative RTP payload bytes sent in the **current** session. Resets to 0 on each new `PLAY` and on session close. | Once per 5 s while streaming. |
+| `cpu_use_pct` | sensor | Percentage of wall-clock that the RTSP audio path (component `loop()` body + mic data callback) consumed in the last window. Range 0–100 %, one decimal. Resets at each `PLAY`; published as 0 on session close. | Once per ~10 s while streaming. |
 
-All three are tagged `entity_category: diagnostic` so HA groups them on
+All entries are tagged `entity_category: diagnostic` so HA groups them on
 the device's diagnostics card rather than the main controls.
 
-The scope is intentionally narrow — these three answer the common
-questions ("is anything connected? who? is audio actually flowing?")
-without flooding HA with internal counters. If you want more, open an
-issue.
+The scope is intentionally narrow — these answer the common
+questions ("is anything connected? who? is audio actually flowing? do
+I have CPU headroom?") without flooding HA with internal counters. If
+you want more, open an issue.
 
 ### Example
 
@@ -267,6 +268,8 @@ sensor:
   - platform: rtsp_audio
     bytes_sent:
       name: "RTSP bytes sent"
+    cpu_use_pct:
+      name: "CPU use"
 ```
 
 If you have **more than one** `rtsp_audio:` instance, add
@@ -279,6 +282,36 @@ counter within a session, so it pairs well with HA's
 [`derivative` sensor](https://www.home-assistant.io/integrations/derivative/)
 or [Riemann sum](https://www.home-assistant.io/integrations/integration/)
 to derive a bitrate.
+
+#### Reading `cpu_use_pct`
+
+The sensor exists to answer the practical question **"is this ESP chip
+up to the task, or do I need a more powerful one / do I need to disable
+a feature?"** Use these threshold bands as guidance (the exact numbers
+depend on what else the device is doing):
+
+| Reading | What it means | Action |
+|---|---|---|
+| **< 30 %** | Plenty of headroom. | Safe to add features (more aggressive DSP, future stereo, higher sample rate if it becomes configurable). |
+| **30 – 70 %** | Normal working range. | Audio is fine. Adding features will eat into the remaining budget. |
+| **70 – 90 %** | Running hot. | Brief audio glitches may appear when Wi-Fi gets busy or other tasks spike. Consider simplifying the DSP: raise the low-cut to skip the IIR work, drop the high-cut filter (set it to its max), lower the gain to take the bit-identical unity path. |
+| **> 90 % sustained** | Chip is at its limit. | Expect audio dropouts. Upgrade to a more capable board (e.g. ESP32-S2 → dual-core ESP32-S3) or disable features. |
+| **100 %** | Out of budget; audio will glitch. | Hard "upgrade the chip or turn things off" signal. |
+
+At the default 16 kHz mono 16-bit configuration with the default DSP
+(low-cut at 100 Hz, high-cut off, gain at 0 dB) the value typically sits
+in the low single digits, so anything above that is your own feature
+configuration showing up in the measurement.
+
+The metric is **self-measured** — it counts only the time spent inside
+the `rtsp_audio` component's `loop()` body and mic data callback. It
+does **not** include Wi-Fi / LwIP work (which executes in its own task),
+time the I²S driver spends DMA-handling before the callback fires, or
+work done by other ESPHome components. Treat the value as a lower bound
+on total system load: a low reading doesn't prove the whole system is
+idle, but a high reading reliably means the audio path is the
+bottleneck. The measurement itself adds well under 0.1 % of CPU, so it
+doesn't meaningfully bias the value it reports.
 
 ## Minimal YAML block
 

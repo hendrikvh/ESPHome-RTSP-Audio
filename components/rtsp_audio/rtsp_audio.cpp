@@ -22,6 +22,28 @@ namespace esphome::rtsp_audio {
 
 static const char *const TAG = "rtsp_audio";
 
+// Adds (esp_timer_get_time() - start) µs to a target atomic on scope exit.
+// Used to self-time the rtsp_audio main-loop body and the mic data callback
+// for the cpu_use_pct sensor. Cost per scope: two esp_timer reads and one
+// relaxed atomic add — well under 0.1 % of CPU at the cadences these scopes
+// run at, so the measurement itself does not meaningfully bias the result it
+// reports.
+class BusyScope {
+ public:
+  explicit BusyScope(std::atomic<int64_t> &accumulator) : accumulator_(accumulator), start_(esp_timer_get_time()) {}
+  ~BusyScope() {
+    const int64_t elapsed = esp_timer_get_time() - this->start_;
+    if (elapsed > 0)
+      this->accumulator_.fetch_add(elapsed, std::memory_order_relaxed);
+  }
+  BusyScope(const BusyScope &) = delete;
+  BusyScope &operator=(const BusyScope &) = delete;
+
+ private:
+  std::atomic<int64_t> &accumulator_;
+  int64_t start_;
+};
+
 // Helpers that don't need access to the component instance live here so the
 // class surface stays small.
 namespace {
@@ -222,6 +244,9 @@ void RtspAudioComponent::set_gain_db(float db) {
 }
 
 void RtspAudioComponent::loop() {
+  // RAII guard wraps the entire loop body so every exit path (including the
+  // network-down early return) contributes to the cpu_use_pct accumulator.
+  BusyScope busy{this->busy_usec_};
   if (!network::is_connected() && this->control_socket_) {
     ESP_LOGW(TAG, "Network down; closing RTSP session");
     this->close_session_();
@@ -239,6 +264,10 @@ void RtspAudioComponent::loop() {
 
 void RtspAudioComponent::attach_mic_callback_() {
   this->mic_source_->add_data_callback([this](const std::vector<uint8_t> &data) {
+    // RAII guard accumulates the callback's wall-clock cost into the same
+    // busy_usec_ as loop(). The mic callback runs from the I²S driver task,
+    // which is why busy_usec_ is std::atomic.
+    BusyScope busy{this->busy_usec_};
     // Diagnostics: record what MicrophoneSource actually hands us, separate from
     // the RTP send path. Empty buffers mean the I2S layer read no audio.
     this->mic_callbacks_++;
@@ -646,6 +675,12 @@ void RtspAudioComponent::start_streaming_() {
   this->mic_callbacks_ = 0;
   this->mic_empty_callbacks_ = 0;
   this->mic_bytes_received_ = 0;
+  // Reset CPU-use bookkeeping so the first window starts at PLAY, not at
+  // boot — otherwise the first published value would average in any idle
+  // time the device sat with no client connected.
+  this->busy_usec_.store(0, std::memory_order_relaxed);
+  this->cpu_window_start_usec_ = this->last_rtp_usec_;
+  this->stats_tick_ = 0;
   this->dc_blocker_state_ = {};
   this->high_cut_state_ = {};
 
@@ -679,6 +714,13 @@ void RtspAudioComponent::close_session_() {
   if (this->bytes_sent_sensor_ != nullptr && this->bytes_sent_published_ != 0) {
     this->bytes_sent_published_ = 0;
     this->bytes_sent_sensor_->publish_state(0);
+  }
+  // Force the CPU-use sensor back to 0 on session end so the HA gauge doesn't
+  // latch at the last live value while the device sits idle waiting for the
+  // next client. Compare in tenths so we don't republish identical zeros.
+  if (this->cpu_use_pct_sensor_ != nullptr && this->cpu_use_published_tenths_ != 0) {
+    this->cpu_use_published_tenths_ = 0;
+    this->cpu_use_pct_sensor_->publish_state(0.0f);
   }
 #endif
   ESP_LOGI(TAG, "RTSP session closed");
@@ -807,6 +849,31 @@ void RtspAudioComponent::log_stream_stats_(int64_t now) {
     if (this->bytes_sent_sensor_ != nullptr && this->bytes_sent_ != this->bytes_sent_published_) {
       this->bytes_sent_published_ = this->bytes_sent_;
       this->bytes_sent_sensor_->publish_state(this->bytes_sent_);
+    }
+    // CPU-use: publish every other 5 s stats tick (~10 s cadence) so we get a
+    // smooth, low-churn signal. The percentage is (busy µs spent in our loop +
+    // mic callback) / (elapsed wall-clock µs since the last publish). Excludes
+    // Wi-Fi/LwIP, the I²S driver, and other ESPHome components; see CHANGELOG
+    // for the threshold bands users should read this against.
+    this->stats_tick_++;
+    if (this->cpu_use_pct_sensor_ != nullptr && (this->stats_tick_ & 1) == 0) {
+      const int64_t busy = this->busy_usec_.exchange(0, std::memory_order_relaxed);
+      const int64_t window = now - this->cpu_window_start_usec_;
+      this->cpu_window_start_usec_ = now;
+      if (window > 0) {
+        float pct = static_cast<float>(busy) * 100.0f / static_cast<float>(window);
+        if (pct < 0.0f)
+          pct = 0.0f;
+        if (pct > 100.0f)
+          pct = 100.0f;
+        // Quantise to tenths-of-percent so publish-on-change is cheap and
+        // matches the sensor's declared accuracy_decimals=1.
+        const uint16_t tenths = static_cast<uint16_t>(pct * 10.0f + 0.5f);
+        if (tenths != this->cpu_use_published_tenths_) {
+          this->cpu_use_published_tenths_ = tenths;
+          this->cpu_use_pct_sensor_->publish_state(static_cast<float>(tenths) / 10.0f);
+        }
+      }
     }
 #endif
   }
