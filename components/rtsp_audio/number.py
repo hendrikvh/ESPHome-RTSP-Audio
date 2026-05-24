@@ -82,9 +82,9 @@ CONFIG_SCHEMA = cv.Schema(
         )
         .extend(
             {
-                cv.Optional(CONF_INITIAL_VALUE, default=DEFAULT_HIGHCUT): cv.float_range(
-                    min=MIN_HIGHCUT, max=MAX_HIGHCUT
-                ),
+                cv.Optional(
+                    CONF_INITIAL_VALUE, default=DEFAULT_HIGHCUT
+                ): cv.float_range(min=MIN_HIGHCUT, max=MAX_HIGHCUT),
                 cv.Optional(CONF_MIN_VALUE, default=MIN_HIGHCUT): cv.float_,
                 cv.Optional(CONF_MAX_VALUE, default=MAX_HIGHCUT): cv.float_,
                 cv.Optional(CONF_STEP, default=DEFAULT_HIGHCUT_STEP): cv.positive_float,
@@ -99,9 +99,9 @@ CONFIG_SCHEMA = cv.Schema(
         )
         .extend(
             {
-                cv.Optional(CONF_INITIAL_VALUE, default=DEFAULT_GAIN_DB): cv.float_range(
-                    min=MIN_GAIN_DB, max=MAX_GAIN_DB
-                ),
+                cv.Optional(
+                    CONF_INITIAL_VALUE, default=DEFAULT_GAIN_DB
+                ): cv.float_range(min=MIN_GAIN_DB, max=MAX_GAIN_DB),
                 cv.Optional(CONF_MIN_VALUE, default=MIN_GAIN_DB): cv.float_,
                 cv.Optional(CONF_MAX_VALUE, default=MAX_GAIN_DB): cv.float_,
                 cv.Optional(CONF_STEP, default=DEFAULT_GAIN_DB_STEP): cv.positive_float,
