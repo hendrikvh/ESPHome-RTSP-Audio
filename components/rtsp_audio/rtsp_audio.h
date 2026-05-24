@@ -80,6 +80,7 @@ class RtspAudioComponent : public Component {
 #endif
 #ifdef USE_SENSOR
   void set_bytes_sent_sensor(sensor::Sensor *s) { this->bytes_sent_sensor_ = s; }
+  void set_cpu_use_pct_sensor(sensor::Sensor *s) { this->cpu_use_pct_sensor_ = s; }
 #endif
 
  protected:
@@ -234,7 +235,27 @@ class RtspAudioComponent : public Component {
 #ifdef USE_SENSOR
   sensor::Sensor *bytes_sent_sensor_{nullptr};
   uint32_t bytes_sent_published_{UINT32_MAX};
+  sensor::Sensor *cpu_use_pct_sensor_{nullptr};
+  // Last published percentage as tenths-of-percent (0..1000), so we can publish
+  // on change without floating-point comparisons. UINT16_MAX means "never
+  // published"; 0 means "last publish was 0.0 %", which is a valid value.
+  uint16_t cpu_use_published_tenths_{UINT16_MAX};
 #endif
+
+  // CPU-use self-instrumentation. `busy_usec_` accumulates the wall-clock µs
+  // spent inside `loop()` and the mic data callback; `cpu_window_start_usec_`
+  // marks the start of the current measurement window so the percentage is
+  // (busy / (now - window_start)) * 100. The atomic exists because the mic
+  // callback can fire from the I²S driver task on dual-core builds; relaxed
+  // ordering is enough since we only need eventual visibility, not a happens-
+  // before edge with any other data. The reported value covers our own work
+  // only — Wi-Fi/LwIP, the I²S driver, and other ESPHome components are not
+  // counted (see CHANGELOG / docs for how to read the number).
+  std::atomic<int64_t> busy_usec_{0};
+  int64_t cpu_window_start_usec_{0};
+  // Counts 5 s stats ticks so we can publish CPU-use every other tick (~10 s)
+  // without adding a second timer. Reset on each PLAY.
+  uint8_t stats_tick_{0};
 
   // RTP packet buffer (header + payload). Allocated via RAMAllocator on PLAY,
   // freed on TEARDOWN. `rtp_packet_size_` is computed at setup() so we know

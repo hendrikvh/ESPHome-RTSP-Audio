@@ -64,6 +64,12 @@ sensor:
   - platform: rtsp_audio
     bytes_sent:
       name: "RTSP bytes sent"
+    # CPU-use headroom indicator. <30 % plenty of headroom; 30-70 % normal;
+    # 70-90 % running hot (consider disabling features); sustained >90 %
+    # (or 100 %) means upgrade the chip (e.g. ESP32-S2 -> ESP32-S3) or back
+    # off DSP / sample rate.
+    cpu_use_pct:
+      name: "CPU use"
 
 # Optional sliders in Home Assistant. All persist across reboots.
 #   - lowcut_filter_frequency: low-cut filter cutoff in Hz, default 100.

@@ -55,6 +55,8 @@ sensor:
   - platform: rtsp_audio
     bytes_sent:
       name: "RTSP bytes sent"
+    cpu_use_pct:
+      name: "CPU use"
 
 number:
   - platform: rtsp_audio
