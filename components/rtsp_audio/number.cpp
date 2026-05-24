@@ -39,7 +39,7 @@ void RtspAudioLowCutFilterNumber::control(float value) {
     this->pref_.save(&value);
 }
 
-void RtspAudioGainNumber::setup() {
+void RtspAudioGainDbNumber::setup() {
   float value = this->initial_value_;
   if (this->restore_value_) {
     this->pref_ = global_preferences->make_preference<float>(this->get_object_id_hash());
@@ -51,19 +51,19 @@ void RtspAudioGainNumber::setup() {
   // restored value when the first session starts; publishing afterwards
   // keeps HA in sync.
   if (this->parent_ != nullptr)
-    this->parent_->set_gain(value);
+    this->parent_->set_gain_db(value);
   this->publish_state(value);
 }
 
-void RtspAudioGainNumber::dump_config() {
+void RtspAudioGainDbNumber::dump_config() {
   LOG_NUMBER("", "RTSP audio input gain", this);
-  ESP_LOGCONFIG(TAG, "  Initial value: %.2fx", this->initial_value_);
+  ESP_LOGCONFIG(TAG, "  Initial value: %+.1f dB", this->initial_value_);
   ESP_LOGCONFIG(TAG, "  Restore value: %s", YESNO(this->restore_value_));
 }
 
-void RtspAudioGainNumber::control(float value) {
+void RtspAudioGainDbNumber::control(float value) {
   if (this->parent_ != nullptr)
-    this->parent_->set_gain(value);
+    this->parent_->set_gain_db(value);
   this->publish_state(value);
   if (this->restore_value_)
     this->pref_.save(&value);

@@ -18,7 +18,7 @@ External component to stream RTSP audio using ESPHome.
 - One client at a time.
 - **Diagnostic sensors for Home Assistant** — opt-in binary_sensor / text_sensor / sensor platforms expose client-connected state, client IP, and bytes sent so you can debug the stream from HA without needing to tail logs. See [docs/configuration.md#diagnostic-sensors](docs/configuration.md#diagnostic-sensors).
 - **Low-cut filter** — strips MEMS-mic DC bias and low-frequency rumble (HVAC, handling, wind) before the samples leave the device, so downstream consumers (Frigate, BirdNET-Go, voice pipelines, NVRs) get a cleaner signal with more usable dynamic range. Default cut frequency is **100 Hz** (leaves voice fundamentals intact) and is tunable from Home Assistant — raise it in noisier rooms or for non-voice sources. The setting persists across reboots. See [docs/configuration.md#audio-processing](docs/configuration.md#audio-processing).
-- **Input gain, tunable from Home Assistant** — software level adjustment applied after the low-cut filter. Default is **1.0** (unity, bit-identical to a no-gain build); a slider exposes a 0.1–80.0 linear range, persisted across reboots. Overflow is saturating-clamped, never wrapped. See [docs/configuration.md#input-gain](docs/configuration.md#input-gain).
+- **Input gain in dB, tunable from Home Assistant** — software level adjustment applied after the low-cut filter. Default is **0 dB** (unity, bit-identical to a no-gain build); the slider spans **−20 dB to +40 dB** (1 dB steps), persisted across reboots. Overflow is saturating-clamped, never wrapped. See [docs/configuration.md#input-gain](docs/configuration.md#input-gain).
 
 ## Under the hood
 

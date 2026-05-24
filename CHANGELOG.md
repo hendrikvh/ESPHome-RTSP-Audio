@@ -9,17 +9,17 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
-- **Input gain, tunable from Home Assistant.** Software gain stage
-  applied after the low-cut filter and before the L16 byteswap, so the
-  user can lift a quiet mic (or back off a loud one) without re-flashing
-  or touching the I²S `gain_factor`. Exposed as an opt-in
-  `number: platform: rtsp_audio` entity (`gain`) with a 0.1–80.0 linear
-  range, default **1.0** (unity), persisted across reboots. At exactly
-  1.0 the gain stage is skipped and the RTP byte stream is bit-identical
+- **Input gain in dB, tunable from Home Assistant.** Software gain
+  stage applied after the low-cut filter and before the L16 byteswap,
+  so the user can lift a quiet mic (or back off a loud one) without
+  re-flashing or touching the I²S `gain_factor`. Exposed as an opt-in
+  `number: platform: rtsp_audio` entity (`gain_db`) with a
+  **−20 dB to +40 dB** range (1 dB step, max linear ≈ 100×),
+  default **0 dB** (unity), persisted across reboots. At exactly 0 dB
+  the gain stage is skipped and the RTP byte stream is bit-identical
   to a build without the feature. Overflow is **saturating-clamped**
-  (never wraps). Per-sample math is integer-only Q8; negligible CPU
-  cost. The value is a linear multiplier today, not dB — a dB display
-  is on the todo list. See
+  (never wraps). Per-sample math is integer-only Q8 linear; the dB
+  conversion happens once per slider move, never per sample. See
   [docs/configuration.md](docs/configuration.md#input-gain).
 - **Low-cut filter (DC blocker / high-pass), tunable from Home Assistant.**
   Configurable one-pole IIR low-cut filter applied to every sample

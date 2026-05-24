@@ -53,12 +53,14 @@ class RtspAudioComponent : public Component {
   /// DC_BLOCKER_MAX_CUTOFF_HZ].
   void set_lowcut_filter_frequency_hz(float hz);
 
-  /// Updates the software input gain (linear multiplier) at runtime.
-  /// Called from the bundled `number` platform on slider moves and on
-  /// restore. Out-of-range values are clamped to
-  /// [internal::GAIN_MIN, internal::GAIN_MAX]; a value of 1.0 takes the
-  /// bit-identical fast path in the per-sample loop.
-  void set_gain(float linear);
+  /// Updates the software input gain (in dB) at runtime. Called from
+  /// the bundled `number` platform on slider moves and on restore.
+  /// Out-of-range values are clamped to
+  /// [internal::GAIN_DB_MIN, internal::GAIN_DB_MAX]; 0 dB takes the
+  /// bit-identical fast path in the per-sample loop. Internally the
+  /// dB value is converted to a Q8 linear coefficient — the audio hot
+  /// path never sees dB.
+  void set_gain_db(float db);
 
 #ifdef USE_BINARY_SENSOR
   void set_client_connected_binary_sensor(binary_sensor::BinarySensor *s) { this->client_connected_bs_ = s; }
