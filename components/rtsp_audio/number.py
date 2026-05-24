@@ -16,8 +16,8 @@ from . import CONF_RTSP_AUDIO_ID, RtspAudioComponent, rtsp_audio_ns
 
 DEPENDENCIES = ["rtsp_audio"]
 
-CONF_LOWCUT_FILTER_FREQUENCY = "lowcut_filter_frequency"
-CONF_HIGHCUT_FILTER_FREQUENCY = "highcut_filter_frequency"
+CONF_LOW_CUT_FREQUENCY_HZ = "low_cut_frequency_hz"
+CONF_HIGH_CUT_FREQUENCY_HZ = "high_cut_frequency_hz"
 CONF_GAIN_DB = "gain_db"
 
 # Mirrors dc_blocker.h: DC_BLOCKER_DEFAULT_CUTOFF_HZ, MIN_CUTOFF_HZ,
@@ -58,7 +58,7 @@ RtspAudioGainDbNumber = rtsp_audio_ns.class_(
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_RTSP_AUDIO_ID): cv.use_id(RtspAudioComponent),
-        cv.Optional(CONF_LOWCUT_FILTER_FREQUENCY): number.number_schema(
+        cv.Optional(CONF_LOW_CUT_FREQUENCY_HZ): number.number_schema(
             RtspAudioLowCutFilterNumber,
             unit_of_measurement=UNIT_HERTZ,
             entity_category=ENTITY_CATEGORY_CONFIG,
@@ -75,7 +75,7 @@ CONFIG_SCHEMA = cv.Schema(
             }
         )
         .extend(cv.COMPONENT_SCHEMA),
-        cv.Optional(CONF_HIGHCUT_FILTER_FREQUENCY): number.number_schema(
+        cv.Optional(CONF_HIGH_CUT_FREQUENCY_HZ): number.number_schema(
             RtspAudioHighCutFilterNumber,
             unit_of_measurement=UNIT_HERTZ,
             entity_category=ENTITY_CATEGORY_CONFIG,
@@ -115,7 +115,7 @@ CONFIG_SCHEMA = cv.Schema(
 
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_RTSP_AUDIO_ID])
-    if conf := config.get(CONF_LOWCUT_FILTER_FREQUENCY):
+    if conf := config.get(CONF_LOW_CUT_FREQUENCY_HZ):
         var = await number.new_number(
             conf,
             min_value=conf[CONF_MIN_VALUE],
@@ -126,7 +126,7 @@ async def to_code(config):
         cg.add(var.set_parent(parent))
         cg.add(var.set_initial_value(conf[CONF_INITIAL_VALUE]))
         cg.add(var.set_restore_value(conf[CONF_RESTORE_VALUE]))
-    if conf := config.get(CONF_HIGHCUT_FILTER_FREQUENCY):
+    if conf := config.get(CONF_HIGH_CUT_FREQUENCY_HZ):
         var = await number.new_number(
             conf,
             min_value=conf[CONF_MIN_VALUE],

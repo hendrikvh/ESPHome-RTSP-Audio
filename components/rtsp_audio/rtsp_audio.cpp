@@ -204,7 +204,7 @@ void RtspAudioComponent::dump_config() {
 #endif
 }
 
-void RtspAudioComponent::set_lowcut_filter_frequency_hz(float hz) {
+void RtspAudioComponent::set_low_cut_frequency_hz(float hz) {
   const float clamped = std::clamp(hz, static_cast<float>(internal::DC_BLOCKER_MIN_CUTOFF_HZ),
                                    static_cast<float>(internal::DC_BLOCKER_MAX_CUTOFF_HZ));
   // Fall back to 16 kHz before stream_info_ is populated (e.g. when the
@@ -218,7 +218,7 @@ void RtspAudioComponent::set_lowcut_filter_frequency_hz(float hz) {
   ESP_LOGD(TAG, "Low-cut filter frequency set to %.1f Hz (R_Q15=%d)", clamped, this->lowcut_filter_r_q15_);
 }
 
-void RtspAudioComponent::set_highcut_filter_frequency_hz(float hz) {
+void RtspAudioComponent::set_high_cut_frequency_hz(float hz) {
   const float clamped = std::clamp(hz, static_cast<float>(internal::HIGH_CUT_MIN_CUTOFF_HZ),
                                    static_cast<float>(internal::HIGH_CUT_MAX_CUTOFF_HZ));
   // Same stream_info_ fallback as the low-cut: the number entity's

@@ -55,7 +55,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   source gives downstream consumers (Frigate, BirdNET-Go, voice
   pipelines, NVRs) a cleaner signal to work with. Default frequency
   is **100 Hz** (preserves voice fundamentals); an opt-in `number:`
-  platform exposes `lowcut_filter_frequency` to HA as a slider with
+  platform exposes `low_cut_frequency_hz` to HA as a slider with
   values from 20 Hz to 500 Hz, persisted across reboots.
   Integer-only Q15 math in the hot path; negligible CPU cost. See
   [docs/configuration.md](docs/configuration.md#audio-processing).

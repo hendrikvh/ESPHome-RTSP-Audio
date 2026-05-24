@@ -60,12 +60,12 @@ sensor:
 
 number:
   - platform: rtsp_audio
-    lowcut_filter_frequency:
-      name: "RTSP Low Cut Filter Frequency"
+    low_cut_frequency_hz:
+      name: "Low cut frequency"
       unit_of_measurement: "Hz"
-    highcut_filter_frequency:
-      name: "RTSP High Cut Filter Frequency"
+    high_cut_frequency_hz:
+      name: "High cut frequency"
       unit_of_measurement: "Hz"
     gain_db:
-      name: "RTSP audio gain"
+      name: "Audio gain"
       unit_of_measurement: "dB"

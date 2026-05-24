@@ -91,82 +91,62 @@ Stages run per sample inside the RTP send loop, in this order:
 Microphone → Ring buffer → Low-cut filter → High-cut filter → Input gain → L16 byteswap → RTP
 ```
 
-The low-cut runs first so DC and rumble don't eat headroom before the
-gain stage. The high-cut runs next so any out-of-band hiss is removed
-before amplification. Gain sits immediately before the L16 byteswap so
-what HA sees on the slider is exactly what leaves the wire. At default
-settings (high-cut = 20 kHz, gain = 0 dB) both the high-cut and gain
-stages are skipped and the byte stream is bit-identical to a build
-without those features.
+The cut filters run first so DC, rumble, and out-of-band hiss don't
+eat headroom before the gain stage. Gain sits immediately before the
+L16 byteswap so what HA sees on the slider is exactly what leaves the
+wire. At default settings (high-cut = 20 kHz, gain = 0 dB) both the
+high-cut and gain stages are skipped and the byte stream is
+bit-identical to a build without those features.
 
-### Low-cut filter
+### Low and High Cut filters
 
-MEMS microphones like the INMP441 ship with a small DC offset and
-pick up a lot of low-frequency rumble (HVAC, handling, wind). That
-energy wastes dynamic range and makes downstream stages clip earlier
-and thump on level changes. The low-cut filter removes it at the
-source so consumers of the RTSP stream (Frigate, BirdNET-Go, voice
-pipelines, NVRs) get a cleaner signal to work with.
+Two complementary one-pole IIR stages that allows us define the exact
+audio band we are interested in: a
+**low-cut** that strips energy *below* its cutoff, and a
+**high-cut** that rolls off energy *above* its cutoff. Each
+is exposed as its own Home Assistant number entity and persists across
+reboots.
 
-The filter is always on. The cut frequency defaults to **100 Hz**,
-which is low enough to leave voice fundamentals intact while still
-cutting the bulk of HVAC and handling rumble. You can tune it from
-Home Assistant by adding the optional `number` block below —
-useful for noisier rooms or non-voice sources where a more
-aggressive cut sounds better. The setting persists across reboots.
+**When to use the low-cut.** MEMS microphones like the INMP441 ship
+with a small DC offset and pick up a lot of low-frequency rumble (HVAC,
+handling, wind). That energy wastes dynamic range and makes downstream
+stages clip earlier and thump on level changes. The low-cut removes it
+at the source so consumers of the RTSP stream (Frigate, BirdNET-Go,
+voice pipelines, NVRs) get a cleaner signal to work with. Raise the
+cutoff in noisier rooms or for non-voice sources where a more
+aggressive cut sounds better.
 
-```yaml
-number:
-  - platform: rtsp_audio
-    lowcut_filter_frequency:
-      name: "RTSP Low Cut Filter Frequency"
-      unit_of_measurement: "Hz"
-```
+**When to use the high-cut.** Useful for taming microphone hiss, wind
+noise, and out-of-band content that downstream consumers don't need —
+e.g. narrow-band voice models or NVR storage where the high
+frequencies are wasted bandwidth. It's off by default; dial the slider
+down from Home Assistant to engage it.
 
-Defaults: `initial_value: 100`, `min_value: 20`, `max_value: 500`,
-`step: 10`, `restore_value: true`. Values are in Hz. The entity is
-tagged `entity_category: config` so HA groups it under configuration
-rather than the main controls.
-
-If you have **more than one** `rtsp_audio:` instance, add
-`rtsp_audio_id: <component-id>` next to `platform: rtsp_audio` so the
-entity binds to the right parent.
-
-### High-cut filter
-
-The complementary stage to the low-cut: a one-pole IIR low-pass that
-rolls off energy **above** the cutoff. Useful for taming microphone
-hiss, wind noise, and out-of-band content that downstream consumers
-don't need — e.g. narrow-band voice models or NVR storage where the
-high frequencies are wasted bandwidth.
-
-The filter is **off by default** (cutoff = 20 kHz, which is above the
-16 kHz audio's Nyquist frequency). At the default the stage is skipped
-entirely and the byte stream is bit-identical to a build without the
-high-cut feature. Dial the slider down from Home Assistant to engage
-it; the setting persists across reboots.
+| Entity | Config key | Default | Range | Step | Notes |
+|---|---|---|---|---|---|
+| Low cut | `low_cut_frequency_hz` | 100 Hz | 20–500 Hz | 10 Hz | Always on. 100 Hz leaves voice fundamentals intact while cutting the bulk of HVAC and handling rumble. |
+| High cut | `high_cut_frequency_hz` | 20000 Hz (off) | 1000–20000 Hz | 100 Hz | At the max the stage is skipped — bit-identical to a build without it. |
 
 ```yaml
 number:
   - platform: rtsp_audio
-    highcut_filter_frequency:
-      name: "RTSP High Cut Filter Frequency"
+    low_cut_frequency_hz:
+      name: "Low cut frequency"
+      unit_of_measurement: "Hz"
+    high_cut_frequency_hz:
+      name: "High cut frequency"
       unit_of_measurement: "Hz"
 ```
 
-Defaults: `initial_value: 20000`, `min_value: 1000`, `max_value: 20000`,
-`step: 100`, `restore_value: true`. Values are in Hz; the max (20 kHz)
-is the "filter off" position. The entity is tagged
-`entity_category: config` so HA groups it with the low-cut and gain
-controls under configuration rather than the main controls.
-
-If you have **more than one** `rtsp_audio:` instance, add
-`rtsp_audio_id: <component-id>` next to `platform: rtsp_audio` so the
-entity binds to the right parent.
+Both entities are tagged `entity_category: config` so HA groups them
+under configuration rather than the main controls. If you have **more
+than one** `rtsp_audio:` instance, add `rtsp_audio_id: <component-id>`
+next to `platform: rtsp_audio` so the entities bind to the right
+parent.
 
 ### Input gain
 
-Software input gain applied after the low-cut filter and before the
+Software input gain applied after the cut filters and before the
 RTP byteswap. Lets you lift the level of a quiet mic, or back it off
 for a loud source, without re-flashing or touching the I²S `gain_factor`
 (which rounds at the source). The setting persists across reboots.
@@ -203,7 +183,7 @@ number:
 
 Defaults: `initial_value: 0.0`, `min_value: -20.0`, `max_value: 40.0`,
 `step: 1.0`, `restore_value: true`. The entity is tagged
-`entity_category: config` so HA groups it with the low-cut filter under
+`entity_category: config` so HA groups it with the cut filters under
 configuration rather than the main controls.
 
 The +40 dB ceiling (100× linear) is deliberately generous so a very
@@ -218,11 +198,11 @@ The gain, low-cut, and high-cut entities share a single
 ```yaml
 number:
   - platform: rtsp_audio
-    lowcut_filter_frequency:
-      name: "RTSP Low Cut Filter Frequency"
+    low_cut_frequency_hz:
+      name: "Low cut frequency"
       unit_of_measurement: "Hz"
-    highcut_filter_frequency:
-      name: "RTSP High Cut Filter Frequency"
+    high_cut_frequency_hz:
+      name: "High cut frequency"
       unit_of_measurement: "Hz"
     gain_db:
       name: "Audio gain"

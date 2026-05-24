@@ -52,7 +52,7 @@ class RtspAudioComponent : public Component {
   /// from `Number::setup()` when the persisted value is restored on boot.
   /// Out-of-range values are clamped to [DC_BLOCKER_MIN_CUTOFF_HZ,
   /// DC_BLOCKER_MAX_CUTOFF_HZ].
-  void set_lowcut_filter_frequency_hz(float hz);
+  void set_low_cut_frequency_hz(float hz);
 
   /// Updates the high-cut filter frequency (in Hz) at runtime. Called
   /// from the bundled `number` platform when the HA slider moves and
@@ -61,7 +61,7 @@ class RtspAudioComponent : public Component {
   /// [HIGH_CUT_MIN_CUTOFF_HZ, HIGH_CUT_MAX_CUTOFF_HZ]; a cutoff at the
   /// max disables the filter via the bit-identical fast path in the
   /// per-sample loop.
-  void set_highcut_filter_frequency_hz(float hz);
+  void set_high_cut_frequency_hz(float hz);
 
   /// Updates the software input gain (in dB) at runtime. Called from
   /// the bundled `number` platform on slider moves and on restore.
