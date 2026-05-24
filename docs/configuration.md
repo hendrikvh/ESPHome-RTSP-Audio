@@ -88,14 +88,16 @@ The timeout is a compile-time constant (`SESSION_TIMEOUT_SECONDS` in
 Stages run per sample inside the RTP send loop, in this order:
 
 ```
-Microphone → Ring buffer → Low-cut filter → Input gain → L16 byteswap → RTP
+Microphone → Ring buffer → Low-cut filter → High-cut filter → Input gain → L16 byteswap → RTP
 ```
 
 The low-cut runs first so DC and rumble don't eat headroom before the
-gain stage. Gain sits immediately before the L16 byteswap so what HA
-sees on the slider is exactly what leaves the wire. At default settings
-(gain = 0 dB) the gain stage is skipped and the byte stream is
-bit-identical to a build without the gain feature.
+gain stage. The high-cut runs next so any out-of-band hiss is removed
+before amplification. Gain sits immediately before the L16 byteswap so
+what HA sees on the slider is exactly what leaves the wire. At default
+settings (high-cut = 20 kHz, gain = 0 dB) both the high-cut and gain
+stages are skipped and the byte stream is bit-identical to a build
+without those features.
 
 ### Low-cut filter
 
@@ -125,6 +127,38 @@ Defaults: `initial_value: 100`, `min_value: 20`, `max_value: 500`,
 `step: 10`, `restore_value: true`. Values are in Hz. The entity is
 tagged `entity_category: config` so HA groups it under configuration
 rather than the main controls.
+
+If you have **more than one** `rtsp_audio:` instance, add
+`rtsp_audio_id: <component-id>` next to `platform: rtsp_audio` so the
+entity binds to the right parent.
+
+### High-cut filter
+
+The complementary stage to the low-cut: a one-pole IIR low-pass that
+rolls off energy **above** the cutoff. Useful for taming microphone
+hiss, wind noise, and out-of-band content that downstream consumers
+don't need — e.g. narrow-band voice models or NVR storage where the
+high frequencies are wasted bandwidth.
+
+The filter is **off by default** (cutoff = 20 kHz, which is above the
+16 kHz audio's Nyquist frequency). At the default the stage is skipped
+entirely and the byte stream is bit-identical to a build without the
+high-cut feature. Dial the slider down from Home Assistant to engage
+it; the setting persists across reboots.
+
+```yaml
+number:
+  - platform: rtsp_audio
+    highcut_filter_frequency:
+      name: "RTSP High Cut Filter Frequency"
+      unit_of_measurement: "Hz"
+```
+
+Defaults: `initial_value: 20000`, `min_value: 1000`, `max_value: 20000`,
+`step: 100`, `restore_value: true`. Values are in Hz; the max (20 kHz)
+is the "filter off" position. The entity is tagged
+`entity_category: config` so HA groups it with the low-cut and gain
+controls under configuration rather than the main controls.
 
 If you have **more than one** `rtsp_audio:` instance, add
 `rtsp_audio_id: <component-id>` next to `platform: rtsp_audio` so the
@@ -178,14 +212,17 @@ quiet MEMS mic in a large room can be lifted to a usable level. Above
 well before you run out of slider — that's the point at which the
 planned soft limiter becomes worth wiring in.
 
-The gain and low-cut entities share a single `platform: rtsp_audio`
-block — declare them under the same list item:
+The gain, low-cut, and high-cut entities share a single
+`platform: rtsp_audio` block — declare them under the same list item:
 
 ```yaml
 number:
   - platform: rtsp_audio
     lowcut_filter_frequency:
       name: "RTSP Low Cut Filter Frequency"
+      unit_of_measurement: "Hz"
+    highcut_filter_frequency:
+      name: "RTSP High Cut Filter Frequency"
       unit_of_measurement: "Hz"
     gain_db:
       name: "Audio gain"

@@ -11,6 +11,7 @@
 
 #include "dc_blocker.h"
 #include "gain.h"
+#include "high_cut.h"
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/microphone/microphone_source.h"
 #include "esphome/components/socket/socket.h"
@@ -52,6 +53,15 @@ class RtspAudioComponent : public Component {
   /// Out-of-range values are clamped to [DC_BLOCKER_MIN_CUTOFF_HZ,
   /// DC_BLOCKER_MAX_CUTOFF_HZ].
   void set_lowcut_filter_frequency_hz(float hz);
+
+  /// Updates the high-cut filter frequency (in Hz) at runtime. Called
+  /// from the bundled `number` platform when the HA slider moves and
+  /// from `Number::setup()` when the persisted value is restored on
+  /// boot. Out-of-range values are clamped to
+  /// [HIGH_CUT_MIN_CUTOFF_HZ, HIGH_CUT_MAX_CUTOFF_HZ]; a cutoff at the
+  /// max disables the filter via the bit-identical fast path in the
+  /// per-sample loop.
+  void set_highcut_filter_frequency_hz(float hz);
 
   /// Updates the software input gain (in dB) at runtime. Called from
   /// the bundled `number` platform on slider moves and on restore.
@@ -198,6 +208,14 @@ class RtspAudioComponent : public Component {
   internal::DcBlockerState dc_blocker_state_{};
   int32_t lowcut_filter_r_q15_{internal::DC_BLOCKER_DEFAULT_R_Q15};
   float lowcut_filter_frequency_hz_{static_cast<float>(internal::DC_BLOCKER_DEFAULT_CUTOFF_HZ)};
+
+  // High-cut filter (one-pole IIR low-pass) state. Same lifecycle as the
+  // low-cut: reset to zero at each PLAY so a new session doesn't
+  // inherit the previous one's transient. Defaults to the off sentinel
+  // so an un-touched HA install streams bit-identical bytes.
+  internal::HighCutState high_cut_state_{};
+  int32_t highcut_filter_a_q15_{internal::HIGH_CUT_DEFAULT_A_Q15};
+  float highcut_filter_frequency_hz_{static_cast<float>(internal::HIGH_CUT_DEFAULT_CUTOFF_HZ)};
 
   // Software input gain. Stored in Q8 so the RTP loop multiplies once
   // per sample; `internal::GAIN_Q8_UNITY` (256) is the bit-identical
