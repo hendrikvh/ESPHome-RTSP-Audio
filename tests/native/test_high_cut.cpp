@@ -9,15 +9,15 @@
 namespace esphome::rtsp_audio::internal {
 namespace {
 
-// A representative on-coefficient: 2 kHz cutoff at the standard 16 kHz
+// A representative on-coefficient: 2 kHz cutoff at the standard 32 kHz
 // rate. Picked so the LPF tests have a clearly audible roll-off without
 // being so aggressive that quantisation dominates.
 constexpr int32_t kOnA = []() {
   // expf rounding can flip the last unit but a constexpr lambda can't
   // call std::exp on every compiler, so just precompute by hand:
-  // a = 1 - exp(-2π·2000/16000) = 1 - exp(-0.7854) ≈ 0.5440
-  // a_q15 = round(0.5440 * 32768) = 17827.
-  return 17827;
+  // a = 1 - exp(-2π·2000/32000) = 1 - exp(-0.3927) ≈ 0.32477
+  // a_q15 = round(0.32477 * 32768) = 10642.
+  return 10642;
 }();
 
 TEST(HighCut, ZeroInputZeroOutput) {
@@ -36,12 +36,14 @@ TEST(HighCut, ConstantInputSettlesToInput) {
   for (int i = 0; i < 5000; i++) {
     last = high_cut_step(kDc, s, kOnA);
   }
-  EXPECT_LE(std::abs(static_cast<int>(last) - kDc), 2);
+  // Q15 truncation in the shift leaves a small steady-state offset that
+  // scales as ~1/a; at a≈0.325 (2 kHz @ 32 kHz) the residual is a few LSBs.
+  EXPECT_LE(std::abs(static_cast<int>(last) - kDc), 4);
 }
 
 TEST(HighCut, FirstSampleScaledByA) {
-  // y[0] = 0 + a*(x[0] - 0) = a*x[0]. For kOnA ≈ 0.544 and x = 1000,
-  // y[0] ≈ 544. Catches a sign / formula error that would still pass
+  // y[0] = 0 + a*(x[0] - 0) = a*x[0]. For kOnA ≈ 0.325 and x = 1000,
+  // y[0] ≈ 325. Catches a sign / formula error that would still pass
   // ZeroInputZeroOutput.
   HighCutState s{};
   const int16_t got = high_cut_step(1000, s, kOnA);
@@ -100,41 +102,41 @@ TEST(HighCut, ResetStateRestartsFilter) {
 }
 
 TEST(HighCut, DefaultsAreOff) {
-  EXPECT_EQ(20000, HIGH_CUT_DEFAULT_CUTOFF_HZ);
-  EXPECT_EQ(20000, HIGH_CUT_MAX_CUTOFF_HZ);
+  EXPECT_EQ(16000, HIGH_CUT_DEFAULT_CUTOFF_HZ);
+  EXPECT_EQ(16000, HIGH_CUT_MAX_CUTOFF_HZ);
   EXPECT_EQ(1000, HIGH_CUT_MIN_CUTOFF_HZ);
   EXPECT_EQ(HIGH_CUT_A_Q15_OFF, HIGH_CUT_DEFAULT_A_Q15);
   EXPECT_EQ(0, HIGH_CUT_A_Q15_OFF);
 }
 
 TEST(HighCutAQ15Helper, MatchesHandComputed) {
-  // a = 1 - exp(-2π·2000/16000) ≈ 0.544062 → q15 ≈ 17828. expf rounding
+  // a = 1 - exp(-2π·2000/32000) ≈ 0.324766 → q15 ≈ 10642. expf rounding
   // can flip the last unit; allow ±1.
-  EXPECT_NEAR(17828, high_cut_a_q15_for(2000.0f, 16000.0f), 1);
-  // a = 1 - exp(-2π·5000/16000) ≈ 0.859636 → q15 ≈ 28169.
-  EXPECT_NEAR(28169, high_cut_a_q15_for(5000.0f, 16000.0f), 1);
+  EXPECT_NEAR(10642, high_cut_a_q15_for(2000.0f, 32000.0f), 1);
+  // a = 1 - exp(-2π·5000/32000) ≈ 0.625344 → q15 ≈ 20491.
+  EXPECT_NEAR(20491, high_cut_a_q15_for(5000.0f, 32000.0f), 1);
 }
 
 TEST(HighCutAQ15Helper, ClampsBelowMinReturnsAtMin) {
-  const int32_t at_min = high_cut_a_q15_for(static_cast<float>(HIGH_CUT_MIN_CUTOFF_HZ), 16000.0f);
-  EXPECT_EQ(at_min, high_cut_a_q15_for(0.0f, 16000.0f));
-  EXPECT_EQ(at_min, high_cut_a_q15_for(-50.0f, 16000.0f));
-  EXPECT_EQ(at_min, high_cut_a_q15_for(500.0f, 16000.0f));
+  const int32_t at_min = high_cut_a_q15_for(static_cast<float>(HIGH_CUT_MIN_CUTOFF_HZ), 32000.0f);
+  EXPECT_EQ(at_min, high_cut_a_q15_for(0.0f, 32000.0f));
+  EXPECT_EQ(at_min, high_cut_a_q15_for(-50.0f, 32000.0f));
+  EXPECT_EQ(at_min, high_cut_a_q15_for(500.0f, 32000.0f));
 }
 
 TEST(HighCutAQ15Helper, ClampsAboveMaxReturnsOff) {
-  EXPECT_EQ(HIGH_CUT_A_Q15_OFF, high_cut_a_q15_for(static_cast<float>(HIGH_CUT_MAX_CUTOFF_HZ), 16000.0f));
-  EXPECT_EQ(HIGH_CUT_A_Q15_OFF, high_cut_a_q15_for(30000.0f, 16000.0f));
-  EXPECT_EQ(HIGH_CUT_A_Q15_OFF, high_cut_a_q15_for(1.0e9f, 16000.0f));
+  EXPECT_EQ(HIGH_CUT_A_Q15_OFF, high_cut_a_q15_for(static_cast<float>(HIGH_CUT_MAX_CUTOFF_HZ), 32000.0f));
+  EXPECT_EQ(HIGH_CUT_A_Q15_OFF, high_cut_a_q15_for(30000.0f, 32000.0f));
+  EXPECT_EQ(HIGH_CUT_A_Q15_OFF, high_cut_a_q15_for(1.0e9f, 32000.0f));
 }
 
 TEST(HighCutAQ15Helper, MonotonicInCutoff) {
   // Higher cutoff → larger a (the filter passes more) — strictly true
   // until we hit the off sentinel. Excludes the cutoff frequencies that
   // could land on the sentinel.
-  const int32_t low = high_cut_a_q15_for(1500.0f, 16000.0f);
-  const int32_t mid = high_cut_a_q15_for(3000.0f, 16000.0f);
-  const int32_t high = high_cut_a_q15_for(6000.0f, 16000.0f);
+  const int32_t low = high_cut_a_q15_for(1500.0f, 32000.0f);
+  const int32_t mid = high_cut_a_q15_for(3000.0f, 32000.0f);
+  const int32_t high = high_cut_a_q15_for(6000.0f, 32000.0f);
   EXPECT_LT(low, mid);
   EXPECT_LT(mid, high);
 }

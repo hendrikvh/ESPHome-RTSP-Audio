@@ -144,9 +144,9 @@ void RtspAudioComponent::setup() {
   }
 
   this->stream_info_ = this->mic_source_->get_audio_stream_info();
-  // FINAL_VALIDATE_SCHEMA already pins this to 16 kHz mono 16-bit, but a runtime
+  // FINAL_VALIDATE_SCHEMA already fixes this to 32 kHz mono 16-bit, but a runtime
   // guard keeps the audio math honest if someone bypasses validation.
-  if (this->stream_info_.get_sample_rate() != 16000 || this->stream_info_.get_channels() != 1 ||
+  if (this->stream_info_.get_sample_rate() != 32000 || this->stream_info_.get_channels() != 1 ||
       this->stream_info_.get_bits_per_sample() != 16) {
     ESP_LOGE(TAG, "Unsupported microphone stream: %u Hz / %u ch / %u bit", this->stream_info_.get_sample_rate(),
              this->stream_info_.get_channels(), this->stream_info_.get_bits_per_sample());
@@ -207,12 +207,12 @@ void RtspAudioComponent::dump_config() {
 void RtspAudioComponent::set_low_cut_frequency_hz(float hz) {
   const float clamped = std::clamp(hz, static_cast<float>(internal::DC_BLOCKER_MIN_CUTOFF_HZ),
                                    static_cast<float>(internal::DC_BLOCKER_MAX_CUTOFF_HZ));
-  // Fall back to 16 kHz before stream_info_ is populated (e.g. when the
+  // Fall back to 32 kHz before stream_info_ is populated (e.g. when the
   // number entity's restore_value path fires during setup, before the
   // first SETUP latches the mic shape). The audio source is constrained
-  // to 16 kHz anyway, so this matches the eventual runtime value.
+  // to 32 kHz anyway, so this matches the eventual runtime value.
   const float sr =
-      this->stream_info_.get_sample_rate() != 0 ? static_cast<float>(this->stream_info_.get_sample_rate()) : 16000.0f;
+      this->stream_info_.get_sample_rate() != 0 ? static_cast<float>(this->stream_info_.get_sample_rate()) : 32000.0f;
   this->lowcut_filter_frequency_hz_ = clamped;
   this->lowcut_filter_r_q15_ = internal::dc_blocker_r_q15_for(clamped, sr);
   ESP_LOGD(TAG, "Low-cut filter frequency set to %.1f Hz (R_Q15=%d)", clamped, this->lowcut_filter_r_q15_);
@@ -223,10 +223,10 @@ void RtspAudioComponent::set_high_cut_frequency_hz(float hz) {
                                    static_cast<float>(internal::HIGH_CUT_MAX_CUTOFF_HZ));
   // Same stream_info_ fallback as the low-cut: the number entity's
   // restore_value path can fire during setup, before the first SETUP
-  // latches the mic shape. Our audio source is constrained to 16 kHz
+  // latches the mic shape. Our audio source is constrained to 32 kHz
   // anyway, so this matches the eventual runtime value.
   const float sr =
-      this->stream_info_.get_sample_rate() != 0 ? static_cast<float>(this->stream_info_.get_sample_rate()) : 16000.0f;
+      this->stream_info_.get_sample_rate() != 0 ? static_cast<float>(this->stream_info_.get_sample_rate()) : 32000.0f;
   this->highcut_filter_frequency_hz_ = clamped;
   this->highcut_filter_a_q15_ = internal::high_cut_a_q15_for(clamped, sr);
   if (this->highcut_filter_a_q15_ == internal::HIGH_CUT_A_Q15_OFF) {
@@ -283,9 +283,11 @@ void RtspAudioComponent::attach_mic_callback_() {
 
 bool RtspAudioComponent::allocate_stream_buffers_() {
   // RingBuffer::create() already uses RAMAllocator<uint8_t> internally, so
-  // ~2 s of jitter slack lands in PSRAM on capable boards automatically.
+  // ~1 s of jitter slack lands in PSRAM on capable boards automatically.
+  // At 32 kHz mono 16-bit that's 64 KB — fits in internal RAM on no-PSRAM
+  // boards (2 s would be 128 KB and routinely fails to allocate).
   if (this->ring_buffer_ == nullptr) {
-    const size_t bytes = this->stream_info_.ms_to_bytes(2000);
+    const size_t bytes = this->stream_info_.ms_to_bytes(1000);
     this->ring_buffer_ = ::esphome::RingBuffer::create(bytes);
     if (this->ring_buffer_ == nullptr) {
       ESP_LOGE(TAG, "Ring buffer allocate failed (%zu bytes)", bytes);

@@ -16,14 +16,14 @@ namespace esphome::rtsp_audio::internal {
 //   y[n] = y[n-1] + a * (x[n] - y[n-1])
 //   a    = 1 - exp(-2*pi*fc/fs)
 //
-// Defaults to off (cutoff = 20 kHz, above Nyquist for our 16 kHz audio).
+// Defaults to off (cutoff = 16 kHz, at Nyquist for our 32 kHz audio).
 // `HIGH_CUT_A_Q15_OFF` (0) is reserved as a sentinel: the audio pipeline
 // checks for it and skips the stage entirely, so the default install is
 // bit-identical to a build without the high-cut feature.
 
-constexpr int32_t HIGH_CUT_DEFAULT_CUTOFF_HZ = 20000;
+constexpr int32_t HIGH_CUT_DEFAULT_CUTOFF_HZ = 16000;
 constexpr int32_t HIGH_CUT_MIN_CUTOFF_HZ = 1000;
-constexpr int32_t HIGH_CUT_MAX_CUTOFF_HZ = 20000;
+constexpr int32_t HIGH_CUT_MAX_CUTOFF_HZ = 16000;
 constexpr int32_t HIGH_CUT_A_Q15_OFF = 0;
 constexpr int32_t HIGH_CUT_DEFAULT_A_Q15 = HIGH_CUT_A_Q15_OFF;
 
@@ -46,7 +46,7 @@ inline int16_t high_cut_step(int16_t x, HighCutState &s, int32_t a_q15) {
 // rate. Cutoff is clamped to [HIGH_CUT_MIN_CUTOFF_HZ,
 // HIGH_CUT_MAX_CUTOFF_HZ] so an out-of-range HA control can't
 // destabilise the filter. Returns HIGH_CUT_A_Q15_OFF when the cutoff
-// hits the max (20 kHz) so the pipeline can short-circuit the stage.
+// hits the max (16 kHz) so the pipeline can short-circuit the stage.
 inline int32_t high_cut_a_q15_for(float cutoff_hz, float sample_rate_hz) {
   const float lo = static_cast<float>(HIGH_CUT_MIN_CUTOFF_HZ);
   const float hi = static_cast<float>(HIGH_CUT_MAX_CUTOFF_HZ);

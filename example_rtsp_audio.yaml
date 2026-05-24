@@ -38,7 +38,7 @@ microphone:
     i2s_audio_id: i2s_inmp441
     adc_type: external
     i2s_din_pin: GPIO12   # INMP441 SD
-    sample_rate: 16000
+    sample_rate: 32000
     bits_per_sample: 16bit
     channel: left
 
@@ -75,8 +75,9 @@ sensor:
 #   - low_cut_frequency_hz: low-cut filter cutoff in Hz, default 100.
 #     Raise it in noisier rooms or for non-voice sources.
 #   - high_cut_frequency_hz: high-cut filter cutoff in Hz, default
-#     20000 (off, bit-identical passthrough). Lower it to roll off hiss
-#     or out-of-band content. Range 1000 to 20000 Hz.
+#     16000 (off — at Nyquist for our 32 kHz audio, bit-identical
+#     passthrough). Lower it to roll off hiss or out-of-band content.
+#     Range 1000 to 16000 Hz.
 #   - gain_db: input gain in decibels, default 0 dB (bit-identical
 #     passthrough). Range -20 to +40 dB. Saturating clamp on overflow;
 #     never wraps.

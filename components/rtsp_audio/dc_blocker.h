@@ -15,13 +15,13 @@ namespace esphome::rtsp_audio::internal {
 // Difference equation:
 //   y[n] = x[n] - x[n-1] + R * y[n-1]
 //
-// R = exp(-2*pi*fc/fs). At fc = 100 Hz, fs = 16 kHz this is ~0.96149,
-// which in Q15 is round(0.96149 * 32768) = 31506. 100 Hz sits below
+// R = exp(-2*pi*fc/fs). At fc = 100 Hz, fs = 32 kHz this is ~0.98056,
+// which in Q15 is round(0.98056 * 32768) = 32131. 100 Hz sits below
 // typical voice fundamentals so the default removes HVAC/handling
 // rumble without eating into vocal warmth.
 
 constexpr int32_t DC_BLOCKER_DEFAULT_CUTOFF_HZ = 100;
-constexpr int32_t DC_BLOCKER_DEFAULT_R_Q15 = 31506;
+constexpr int32_t DC_BLOCKER_DEFAULT_R_Q15 = 32131;
 constexpr int32_t DC_BLOCKER_MIN_CUTOFF_HZ = 20;
 constexpr int32_t DC_BLOCKER_MAX_CUTOFF_HZ = 500;
 

@@ -33,7 +33,7 @@ microphone:
     i2s_audio_id: i2s_mic
     adc_type: external
     i2s_din_pin: GPIO15
-    sample_rate: 16000
+    sample_rate: 32000
     bits_per_sample: 16bit
     channel: right
 

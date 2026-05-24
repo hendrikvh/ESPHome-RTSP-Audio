@@ -77,37 +77,37 @@ TEST(DcBlocker, ResetStateRestartsFilter) {
 }
 
 TEST(DcBlocker, DefaultsAreOneHundredHz) {
-  // 31506 / 32768 ≈ 0.96149 = exp(-2π·100/16000). Guard against an
+  // 32131 / 32768 ≈ 0.98056 = exp(-2π·100/32000). Guard against an
   // accidental edit to the defaults.
   EXPECT_EQ(100, DC_BLOCKER_DEFAULT_CUTOFF_HZ);
-  EXPECT_EQ(31506, DC_BLOCKER_DEFAULT_R_Q15);
+  EXPECT_EQ(32131, DC_BLOCKER_DEFAULT_R_Q15);
 }
 
 TEST(RQ15Helper, MatchesHandComputed) {
   // expf rounding can flip the last unit; allow ±1.
-  EXPECT_NEAR(31506, dc_blocker_r_q15_for(100.0f, 16000.0f), 1);
-  EXPECT_NEAR(30292, dc_blocker_r_q15_for(200.0f, 16000.0f), 1);
+  EXPECT_NEAR(32131, dc_blocker_r_q15_for(100.0f, 32000.0f), 1);
+  EXPECT_NEAR(31506, dc_blocker_r_q15_for(200.0f, 32000.0f), 1);
 }
 
 TEST(RQ15Helper, ClampsBelowMin) {
   // Anything below MIN_CUTOFF_HZ should produce the same coefficient
   // as the min itself.
-  const int32_t at_min = dc_blocker_r_q15_for(static_cast<float>(DC_BLOCKER_MIN_CUTOFF_HZ), 16000.0f);
-  EXPECT_EQ(at_min, dc_blocker_r_q15_for(0.0f, 16000.0f));
-  EXPECT_EQ(at_min, dc_blocker_r_q15_for(-50.0f, 16000.0f));
+  const int32_t at_min = dc_blocker_r_q15_for(static_cast<float>(DC_BLOCKER_MIN_CUTOFF_HZ), 32000.0f);
+  EXPECT_EQ(at_min, dc_blocker_r_q15_for(0.0f, 32000.0f));
+  EXPECT_EQ(at_min, dc_blocker_r_q15_for(-50.0f, 32000.0f));
 }
 
 TEST(RQ15Helper, ClampsAboveMax) {
-  const int32_t at_max = dc_blocker_r_q15_for(static_cast<float>(DC_BLOCKER_MAX_CUTOFF_HZ), 16000.0f);
-  EXPECT_EQ(at_max, dc_blocker_r_q15_for(10000.0f, 16000.0f));
+  const int32_t at_max = dc_blocker_r_q15_for(static_cast<float>(DC_BLOCKER_MAX_CUTOFF_HZ), 32000.0f);
+  EXPECT_EQ(at_max, dc_blocker_r_q15_for(10000.0f, 32000.0f));
 }
 
 TEST(RQ15Helper, MonotonicInCutoff) {
   // Higher cutoff → smaller R (the filter is more aggressive). This
   // catches sign / formula errors that pass the spot-checks.
-  const int32_t low = dc_blocker_r_q15_for(50.0f, 16000.0f);
-  const int32_t mid = dc_blocker_r_q15_for(150.0f, 16000.0f);
-  const int32_t high = dc_blocker_r_q15_for(400.0f, 16000.0f);
+  const int32_t low = dc_blocker_r_q15_for(50.0f, 32000.0f);
+  const int32_t mid = dc_blocker_r_q15_for(150.0f, 32000.0f);
+  const int32_t high = dc_blocker_r_q15_for(400.0f, 32000.0f);
   EXPECT_GT(low, mid);
   EXPECT_GT(mid, high);
 }

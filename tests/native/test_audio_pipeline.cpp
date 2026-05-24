@@ -64,7 +64,7 @@ TEST(AudioPipeline, ZeroInputZeroOutput) {
   DcBlockerState s{};
   HighCutState hc{};
   process_l16_payload_inplace(samples.data(), samples.size(), s, DC_BLOCKER_DEFAULT_R_Q15, hc,
-                              high_cut_a_q15_for(2000.0f, 16000.0f), gain_q8_for(8.0f));
+                              high_cut_a_q15_for(2000.0f, 32000.0f), gain_q8_for(8.0f));
   for (int16_t v : samples) {
     EXPECT_EQ(0, v);
   }
@@ -102,7 +102,7 @@ TEST(AudioPipeline, HighCutOnAttenuatesHighFreq) {
   process_l16_payload_inplace(off_samples.data(), kCount, s_off, DC_BLOCKER_DEFAULT_R_Q15, hc_off, HIGH_CUT_A_Q15_OFF,
                               GAIN_Q8_UNITY);
   process_l16_payload_inplace(on_samples.data(), kCount, s_on, DC_BLOCKER_DEFAULT_R_Q15, hc_on,
-                              high_cut_a_q15_for(2000.0f, 16000.0f), GAIN_Q8_UNITY);
+                              high_cut_a_q15_for(2000.0f, 32000.0f), GAIN_Q8_UNITY);
 
   auto peak_native = [](const std::vector<int16_t> &be) {
     int32_t peak = 0;

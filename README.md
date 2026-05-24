@@ -14,14 +14,23 @@ External component to stream RTSP audio using ESPHome.
 - **RTP over UDP** (`RTP/AVP`) — the classic transport. works with VLC and most media players.
 - **RTP over TCP** (`RTP/AVP/TCP`, interleaved) — RTP framed on the RTSP connection. Works with FFmpeg, BirdNET-Go, Frigate, and most NVRs.
 - Transport is negotiated per client at `SETUP`, so UDP and TCP clients both work with no configuration.
-- Uncompressed **L16 PCM** audio — 16 kHz mono 16-bit, RTP payload type 96 (`L16/16000/1`).
+- Uncompressed **L16 PCM** audio — 32 kHz mono 16-bit, RTP payload type 96 (`L16/32000/1`). See [Audio format](#audio-format) for the rationale.
 - One client at a time.
 - **Diagnostic sensors for Home Assistant** — opt-in binary_sensor / text_sensor / sensor platforms expose client-connected state, client IP, and bytes sent so you can debug the stream from HA without needing to tail logs. See [docs/configuration.md#diagnostic-sensors](docs/configuration.md#diagnostic-sensors).
 - **CPU-use sensor** — opt-in `cpu_use_pct` sensor reports the percentage of wall-clock that the RTSP audio path (main `loop()` + mic data callback) is consuming, so you can see whether your ESP chip has headroom for the current sample rate, DSP settings, and enabled features — and decide whether you need a more powerful chip or have to disable a feature. **Interpretation:** under ~30 % is plenty of headroom; 30–70 % is normal; 70–90 % means brief audio glitches under Wi-Fi load are possible and you should consider simplifying the DSP; sustained >90 % (and especially 100 %) means the chip is at its limit — upgrade to a more capable board (e.g. ESP32-S2 → ESP32-S3) or back off DSP / sample rate. Excludes Wi-Fi/LwIP, the I²S driver, and other ESPHome components, so treat it as a lower bound on total system load. See [docs/configuration.md#diagnostic-sensors](docs/configuration.md#diagnostic-sensors).
 - **High and Low Cut filters** — complementary low-cut and high-cut stages tunable from Home Assistant, both negligible CPU cost (one-pole IIR, one MAC per sample). See [docs/configuration.md#cut-filters](docs/configuration.md#cut-filters).
   - **Low-cut** — strips MEMS-mic DC bias and low-frequency rumble (HVAC, handling, wind) so downstream consumers get a cleaner signal with more usable dynamic range. Always on; defaults to **100 Hz** (leaves voice fundamentals intact). Raise it in noisier rooms or for non-voice sources.
-  - **High-cut** — rolls off out-of-band hiss above the cutoff. **Off by default** (cutoff = 20 kHz, bit-identical passthrough). Useful for narrow-band voice models or NVR storage where the top end is wasted bandwidth.
+  - **High-cut** — rolls off out-of-band hiss above the cutoff. **Off by default** (cutoff = 16 kHz, the Nyquist frequency for our 32 kHz audio — bit-identical passthrough). Useful for narrow-band voice models or NVR storage where the top end is wasted bandwidth.
 - **Input gain in dB, tunable from Home Assistant** — software level adjustment applied after the cut filters. Default is **0 dB** (unity, bit-identical to a no-gain build); the slider spans **−20 dB to +40 dB** (1 dB steps), persisted across reboots. Overflow is saturating-clamped, never wrapped. See [docs/configuration.md#input-gain](docs/configuration.md#input-gain).
+
+## Audio format
+
+The mic source is set to **L16 PCM, 32 kHz, mono, 16-bit** (RTP payload type 96, `L16/32000/1`). The format is fixed — no resampler is pulled in, so PCM flows straight from the mic into RTP.
+
+- **Usable bandwidth** — Nyquist sits at 16 kHz, and the high-cut filter caps useful content at or below that. Comfortably above the ~8 kHz where speech intelligibility lives, and well into the range a typical MEMS capsule (e.g. INMP441) can reproduce cleanly.
+- **Why 32 kHz, not higher or lower** — the MEMS mics this targets are not high-fidelity capsules. Pushing past 32 kHz spends CPU and Wi-Fi bandwidth on content the mic can't faithfully capture; staying at 16 kHz leaves voice fine but throws away the ambient detail (footsteps, doors, bird calls) that lives in the 8–16 kHz octave. 32 kHz is the balance point.
+- **CPU cost** — roughly double the 16 kHz path, but on an ESP32-S3 the audio path still sits well under the comfort budget described in the CPU-use sensor section above.
+- **Wi-Fi / packet size** — RTP packets are ~1.3 KB at the default 20 ms packet duration, still well under MTU. Both UDP and TCP transports are unaffected.
 
 ## Under the hood
 
@@ -52,13 +61,26 @@ with [INMP441 MEMS microphone module](https://easyelecmodule.com/a-complete-guid
 ## Goals
 
 - Stream microphone audio off an ESP32 over standard RTSP
-- Simple: Single stream, fixed 16 kHz / mono / 16-bit audio
+- Simple: Single stream, fixed 32 kHz / mono / 16-bit audio
 - Pair cleanly with ESPHome's mic stack
 
 ## Design philosophy
 
 - Use ESPHome built-ins over custom code whenever possible
 - ESP-IDF first platform first sine this is the future of ESPHome
+
+### Sized to fit ESP32 internal SRAM (no PSRAM required)
+
+The jitter ring buffer is sized for **1 second of audio** (~64 KB at 32 kHz mono 16-bit). That's a deliberate compromise: 2 s would absorb longer Wi-Fi stalls, but it would also push the buffer past what a bare ESP32 can hand out as a single contiguous chunk of internal RAM.
+
+The ESP32 family is split on PSRAM:
+
+- **No PSRAM** — bare `ESP32-WROOM`, most `ESP32-S3-WROOM-1` SKUs without an `R` in the part number, and all current `ESP32-C3` / `-C6` / `-H2` parts (the RISC-V chips don't even support PSRAM). These boards have ~320 KB of internal SRAM total, most of it claimed by Wi-Fi, LwIP, and the ESPHome runtime — a 128 KB contiguous allocation routinely fails on them.
+- **With PSRAM** — `WROVER` variants, `ESP32-S3-WROOM-1-N…R8` / `-R2`, and PSRAM-equipped S2 modules (e.g. LOLIN S2 Mini). 2 MB or 8 MB external RAM is plenty.
+
+Because we want the component to "just work" on any ESPHome-capable ESP32 — including the cheap WROOM boards everyone has in a drawer — the buffer is sized for the no-PSRAM case. The RTSP client adds its own jitter buffer (VLC, ffmpeg, NVRs all hold ~500 ms–1 s before playback starts), so end-to-end resilience is closer to 1.5–2 s.
+
+A future enhancement would be to detect PSRAM at runtime and grow the ring buffer to 2 s when it's available, giving PSRAM boards the extra safety margin without breaking the bare-WROOM path.
 
 ## Intentional non-goals
 
@@ -70,7 +92,7 @@ avoids the need for per-client packet pacing, SSRC, and sequence numbering.
 
 ### Sample-rate conversion
 
-The microphone source is set to 16 kHz mono 16-bit so PCM passes
+The microphone source is set to 32 kHz mono 16-bit so PCM passes
 straight into RTP with no resampler pulled in.
 
 ## Development
