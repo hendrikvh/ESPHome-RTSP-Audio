@@ -61,3 +61,5 @@ number:
     lowcut_filter_frequency:
       name: "RTSP Low Cut Filter Frequency"
       unit_of_measurement: "Hz"
+    gain:
+      name: "RTSP audio gain"

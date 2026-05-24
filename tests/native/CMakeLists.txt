@@ -31,6 +31,8 @@ set(RTSP_AUDIO_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../components/rtsp_audio)
 add_executable(rtsp_audio_tests
   test_session_timeout.cpp
   test_dc_blocker.cpp
+  test_gain.cpp
+  test_audio_pipeline.cpp
 )
 target_include_directories(rtsp_audio_tests PRIVATE ${RTSP_AUDIO_SRC_DIR})
 target_link_libraries(rtsp_audio_tests PRIVATE GTest::gtest_main)
