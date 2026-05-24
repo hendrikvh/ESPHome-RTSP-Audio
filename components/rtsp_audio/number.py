@@ -29,12 +29,12 @@ MAX_CUTOFF = 500.0
 DEFAULT_STEP = 10.0
 
 # Mirrors high_cut.h: HIGH_CUT_DEFAULT_CUTOFF_HZ, MIN_CUTOFF_HZ,
-# MAX_CUTOFF_HZ. The default is the max (20 kHz), which the C++ side
-# treats as "filter off" via a sentinel coefficient — bit-identical to a
-# build without this stage.
-DEFAULT_HIGHCUT = 20000.0
+# MAX_CUTOFF_HZ. The default is the max (16 kHz, Nyquist for our 32 kHz
+# audio), which the C++ side treats as "filter off" via a sentinel
+# coefficient — bit-identical to a build without this stage.
+DEFAULT_HIGHCUT = 16000.0
 MIN_HIGHCUT = 1000.0
-MAX_HIGHCUT = 20000.0
+MAX_HIGHCUT = 16000.0
 DEFAULT_HIGHCUT_STEP = 100.0
 
 # Mirrors gain.h: GAIN_DB_DEFAULT, GAIN_DB_MIN, GAIN_DB_MAX. The slider

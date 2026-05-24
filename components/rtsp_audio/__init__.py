@@ -38,7 +38,7 @@ FINAL_VALIDATE_SCHEMA = cv.Schema(
         cv.Optional(
             CONF_MICROPHONE
         ): microphone.final_validate_microphone_source_schema(
-            "rtsp_audio", sample_rate=16000
+            "rtsp_audio", sample_rate=32000
         ),
     },
     extra=cv.ALLOW_EXTRA,

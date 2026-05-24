@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- **Audio sample rate raised from 16 kHz to 32 kHz.** The mic source, RTP
+  payload (`L16/32000/1`), filter coefficients, and high-cut bounds
+  (now capped at the new 16 kHz Nyquist) all move together. Bit depth
+  stays at 16-bit mono. The MEMS capsules this targets (e.g. INMP441)
+  can't faithfully capture much above 16 kHz, so 32 kHz is the balance
+  point — voice plus the ambient detail (footsteps, doors, bird calls)
+  in the 8–16 kHz octave, without spending CPU and Wi-Fi bandwidth on
+  content the mic can't reproduce. On an ESP32-S3 the audio path still
+  sits well under the comfort budget reported by `cpu_use_pct`. RTP
+  packets roughly double in size (~1.3 KB at 20 ms), still well under
+  MTU. See the README's "Audio format" section.
+- **Ring buffer reduced from 2 s to 1 s of jitter slack** so the
+  component fits on bare ESP32 boards without PSRAM. At 32 kHz the
+  2 s buffer was 128 KB, which routinely fails to allocate as a
+  contiguous chunk on `WROOM` / RISC-V parts that only have ~320 KB
+  internal SRAM total. 1 s (~64 KB) keeps the same byte budget as the
+  previous 16 kHz / 2 s buffer; the RTSP client's own jitter buffer
+  brings end-to-end resilience back to ~1.5–2 s. See the README's
+  "Sized to fit ESP32 internal SRAM" section for the rationale and a
+  note on possible PSRAM-aware sizing in future.
+
 ### Added
 
 - **CPU-use diagnostic sensor (`cpu_use_pct`).** Opt-in `sensor:` entry on

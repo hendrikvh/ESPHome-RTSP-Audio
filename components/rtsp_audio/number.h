@@ -40,7 +40,7 @@ class RtspAudioLowCutFilterNumber : public number::Number, public Component {
 /// `RtspAudioLowCutFilterNumber`: the persisted value is pushed to the
 /// parent before being published, so the very first RTP packet of a
 /// session already uses the restored cutoff. A cutoff at the max
-/// (20 kHz) disables the filter via the bit-identical fast path.
+/// (16 kHz, Nyquist) disables the filter via the bit-identical fast path.
 class RtspAudioHighCutFilterNumber : public number::Number, public Component {
  public:
   void set_parent(RtspAudioComponent *p) { this->parent_ = p; }
@@ -55,7 +55,7 @@ class RtspAudioHighCutFilterNumber : public number::Number, public Component {
   void control(float value) override;
 
   RtspAudioComponent *parent_{nullptr};
-  float initial_value_{20000.0f};  // default off
+  float initial_value_{16000.0f};  // default off
   bool restore_value_{true};
   ESPPreferenceObject pref_;
 };
