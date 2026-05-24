@@ -1,5 +1,6 @@
 #include "rtsp_audio.h"
 
+#include "audio_pipeline.h"
 #include "session_timeout.h"
 #ifdef USE_RTSP_AUDIO
 
@@ -160,6 +161,7 @@ void RtspAudioComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  Audio: %u Hz / %u ch / %u bit, %u samples/pkt", this->stream_info_.get_sample_rate(),
                 this->stream_info_.get_channels(), this->stream_info_.get_bits_per_sample(), this->samples_per_packet_);
   ESP_LOGCONFIG(TAG, "  Low-cut filter frequency: %.1f Hz", this->lowcut_filter_frequency_hz_);
+  ESP_LOGCONFIG(TAG, "  Input gain: %.2fx", this->gain_q8_.load(std::memory_order_relaxed) / 256.0f);
 #ifdef USE_BINARY_SENSOR
   LOG_BINARY_SENSOR("  ", "Client Connected", this->client_connected_bs_);
 #endif
@@ -183,6 +185,12 @@ void RtspAudioComponent::set_lowcut_filter_frequency_hz(float hz) {
   this->lowcut_filter_frequency_hz_ = clamped;
   this->lowcut_filter_r_q15_ = internal::dc_blocker_r_q15_for(clamped, sr);
   ESP_LOGD(TAG, "Low-cut filter frequency set to %.1f Hz (R_Q15=%d)", clamped, this->lowcut_filter_r_q15_);
+}
+
+void RtspAudioComponent::set_gain(float linear) {
+  const int32_t q8 = internal::gain_q8_for(linear);
+  this->gain_q8_.store(q8, std::memory_order_relaxed);
+  ESP_LOGD(TAG, "Input gain set to %.2fx (Q8=%d)", q8 / 256.0f, q8);
 }
 
 void RtspAudioComponent::loop() {
@@ -803,14 +811,13 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   std::memcpy(header + 4, &ts_be, sizeof(ts_be));
   std::memcpy(header + 8, &ssrc_be, sizeof(ssrc_be));
 
-  // Apply the DC blocker / high-pass in the same per-sample pass that
-  // byteswaps to RFC 3551 L16 (network byte order), so we don't walk the
-  // payload buffer twice.
-  auto *samples = reinterpret_cast<int16_t *>(payload);
-  for (size_t i = 0; i < this->samples_per_packet_; i++) {
-    const int16_t filtered = internal::dc_blocker_step(samples[i], this->dc_blocker_state_, this->lowcut_filter_r_q15_);
-    samples[i] = convert_big_endian(filtered);
-  }
+  // Run the per-sample DSP chain (low-cut → gain → L16 byteswap) in one
+  // pass over the payload. The pipeline header centralises the stage
+  // order so future stages (soft limiter, gain smoothing) don't touch
+  // this file.
+  internal::process_l16_payload_inplace(reinterpret_cast<int16_t *>(payload), this->samples_per_packet_,
+                                        this->dc_blocker_state_, this->lowcut_filter_r_q15_,
+                                        this->gain_q8_.load(std::memory_order_relaxed));
 
   const size_t packet_len = RTP_HEADER_BYTES + payload_bytes;
 

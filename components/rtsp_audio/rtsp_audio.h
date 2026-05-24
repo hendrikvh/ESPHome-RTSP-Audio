@@ -3,12 +3,14 @@
 #include "esphome/core/defines.h"
 #ifdef USE_RTSP_AUDIO
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 
 #include "dc_blocker.h"
+#include "gain.h"
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/microphone/microphone_source.h"
 #include "esphome/components/socket/socket.h"
@@ -50,6 +52,13 @@ class RtspAudioComponent : public Component {
   /// Out-of-range values are clamped to [DC_BLOCKER_MIN_CUTOFF_HZ,
   /// DC_BLOCKER_MAX_CUTOFF_HZ].
   void set_lowcut_filter_frequency_hz(float hz);
+
+  /// Updates the software input gain (linear multiplier) at runtime.
+  /// Called from the bundled `number` platform on slider moves and on
+  /// restore. Out-of-range values are clamped to
+  /// [internal::GAIN_MIN, internal::GAIN_MAX]; a value of 1.0 takes the
+  /// bit-identical fast path in the per-sample loop.
+  void set_gain(float linear);
 
 #ifdef USE_BINARY_SENSOR
   void set_client_connected_binary_sensor(binary_sensor::BinarySensor *s) { this->client_connected_bs_ = s; }
@@ -187,6 +196,12 @@ class RtspAudioComponent : public Component {
   internal::DcBlockerState dc_blocker_state_{};
   int32_t lowcut_filter_r_q15_{internal::DC_BLOCKER_DEFAULT_R_Q15};
   float lowcut_filter_frequency_hz_{static_cast<float>(internal::DC_BLOCKER_DEFAULT_CUTOFF_HZ)};
+
+  // Software input gain. Stored in Q8 so the RTP loop multiplies once
+  // per sample; `internal::GAIN_Q8_UNITY` (256) is the bit-identical
+  // skip-scaling fast path. Atomic so the number platform can update it
+  // from the HA control callback without locking against the audio loop.
+  std::atomic<int32_t> gain_q8_{internal::GAIN_Q8_UNITY};
 
 #ifdef USE_BINARY_SENSOR
   binary_sensor::BinarySensor *client_connected_bs_{nullptr};

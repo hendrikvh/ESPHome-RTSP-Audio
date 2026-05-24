@@ -16,6 +16,7 @@ from . import CONF_RTSP_AUDIO_ID, RtspAudioComponent, rtsp_audio_ns
 DEPENDENCIES = ["rtsp_audio"]
 
 CONF_LOWCUT_FILTER_FREQUENCY = "lowcut_filter_frequency"
+CONF_GAIN = "gain"
 
 # Mirrors dc_blocker.h: DC_BLOCKER_DEFAULT_CUTOFF_HZ, MIN_CUTOFF_HZ,
 # MAX_CUTOFF_HZ. The C++ side also clamps internally, but having the
@@ -25,8 +26,18 @@ MIN_CUTOFF = 20.0
 MAX_CUTOFF = 500.0
 DEFAULT_STEP = 10.0
 
+# Mirrors gain.h: GAIN_DEFAULT, GAIN_MIN, GAIN_MAX. Linear multiplier;
+# 1.0 is unity (bit-identical fast path in the RTP loop).
+DEFAULT_GAIN = 1.0
+MIN_GAIN = 0.1
+MAX_GAIN = 80.0
+DEFAULT_GAIN_STEP = 0.1
+
 RtspAudioLowCutFilterNumber = rtsp_audio_ns.class_(
     "RtspAudioLowCutFilterNumber", number.Number, cg.Component
+)
+RtspAudioGainNumber = rtsp_audio_ns.class_(
+    "RtspAudioGainNumber", number.Number, cg.Component
 )
 
 CONFIG_SCHEMA = cv.Schema(
@@ -49,6 +60,22 @@ CONFIG_SCHEMA = cv.Schema(
             }
         )
         .extend(cv.COMPONENT_SCHEMA),
+        cv.Optional(CONF_GAIN): number.number_schema(
+            RtspAudioGainNumber,
+            entity_category=ENTITY_CATEGORY_CONFIG,
+        )
+        .extend(
+            {
+                cv.Optional(CONF_INITIAL_VALUE, default=DEFAULT_GAIN): cv.float_range(
+                    min=MIN_GAIN, max=MAX_GAIN
+                ),
+                cv.Optional(CONF_MIN_VALUE, default=MIN_GAIN): cv.float_,
+                cv.Optional(CONF_MAX_VALUE, default=MAX_GAIN): cv.float_,
+                cv.Optional(CONF_STEP, default=DEFAULT_GAIN_STEP): cv.positive_float,
+                cv.Optional(CONF_RESTORE_VALUE, default=True): cv.boolean,
+            }
+        )
+        .extend(cv.COMPONENT_SCHEMA),
     }
 )
 
@@ -56,6 +83,17 @@ CONFIG_SCHEMA = cv.Schema(
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_RTSP_AUDIO_ID])
     if conf := config.get(CONF_LOWCUT_FILTER_FREQUENCY):
+        var = await number.new_number(
+            conf,
+            min_value=conf[CONF_MIN_VALUE],
+            max_value=conf[CONF_MAX_VALUE],
+            step=conf[CONF_STEP],
+        )
+        await cg.register_component(var, conf)
+        cg.add(var.set_parent(parent))
+        cg.add(var.set_initial_value(conf[CONF_INITIAL_VALUE]))
+        cg.add(var.set_restore_value(conf[CONF_RESTORE_VALUE]))
+    if conf := config.get(CONF_GAIN):
         var = await number.new_number(
             conf,
             min_value=conf[CONF_MIN_VALUE],

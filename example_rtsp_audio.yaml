@@ -65,11 +65,15 @@ sensor:
     bytes_sent:
       name: "RTSP bytes sent"
 
-# Optional: exposes the low-cut filter frequency as a slider in Home
-# Assistant. Defaults to 100 Hz; raise it in noisier rooms or for
-# non-voice sources. The value is persisted across reboots.
+# Optional sliders in Home Assistant. Both persist across reboots.
+#   - lowcut_filter_frequency: low-cut filter cutoff in Hz, default 100.
+#     Raise it in noisier rooms or for non-voice sources.
+#   - gain: linear input gain, default 1.0 (bit-identical passthrough).
+#     Range 0.1–16.0. Saturating clamp on overflow; never wraps.
 number:
   - platform: rtsp_audio
     lowcut_filter_frequency:
       name: "RTSP Low Cut Filter Frequency"
       unit_of_measurement: "Hz"
+    gain:
+      name: "Audio gain"
