@@ -45,8 +45,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   headroom for the current sample rate, DSP settings, and enabled
   features — and decide whether to upgrade or back off. See
   [docs/configuration.md](docs/configuration.md#diagnostic-sensors).
-- **Input gain in dB, tunable from Home Assistant.** Opt-in `number:`
-  on `platform: rtsp_audio` exposing a software input gain slider
+- **Audio gain in dB, tunable from Home Assistant.** Opt-in `number:`
+  on `platform: rtsp_audio` exposing a software audio gain slider
   (`gain_db`, -20 to +40 dB, 1 dB step, default 0 dB, persisted) so a
   quiet mic can be lifted without re-flashing. 0 dB is bit-identical
   to a no-gain build; overflow is saturating-clamped, never wrapped.

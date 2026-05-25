@@ -192,7 +192,7 @@ void RtspAudioComponent::dump_config() {
   {
     const int32_t q8 = this->gain_q8_.load(std::memory_order_relaxed);
     const float linear = q8 / 256.0f;
-    ESP_LOGCONFIG(TAG, "  Input gain: %+.1f dB (%.2fx, Q8=%d)", internal::linear_to_db(linear), linear, q8);
+    ESP_LOGCONFIG(TAG, "  Audio gain: %+.1f dB (%.2fx, Q8=%d)", internal::linear_to_db(linear), linear, q8);
   }
 #ifdef USE_BINARY_SENSOR
   LOG_BINARY_SENSOR("  ", "Client Connected", this->client_connected_bs_);
@@ -241,7 +241,7 @@ void RtspAudioComponent::set_gain_db(float db) {
   const int32_t q8 = internal::gain_q8_for_db(db);
   this->gain_q8_.store(q8, std::memory_order_relaxed);
   const float linear = q8 / 256.0f;
-  ESP_LOGD(TAG, "Input gain set to %+.1f dB (%.2fx, Q8=%d)", db, linear, q8);
+  ESP_LOGD(TAG, "Audio gain set to %+.1f dB (%.2fx, Q8=%d)", db, linear, q8);
 }
 
 void RtspAudioComponent::loop() {

@@ -83,7 +83,7 @@ void RtspAudioGainDbNumber::setup() {
 }
 
 void RtspAudioGainDbNumber::dump_config() {
-  LOG_NUMBER("", "RTSP audio input gain", this);
+  LOG_NUMBER("", "RTSP audio gain", this);
   ESP_LOGCONFIG(TAG, "  Initial value: %+.1f dB", this->initial_value_);
   ESP_LOGCONFIG(TAG, "  Restore value: %s", YESNO(this->restore_value_));
 }

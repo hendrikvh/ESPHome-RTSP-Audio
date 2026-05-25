@@ -63,7 +63,7 @@ class RtspAudioComponent : public Component {
   /// per-sample loop.
   void set_high_cut_frequency_hz(float hz);
 
-  /// Updates the software input gain (in dB) at runtime. Called from
+  /// Updates the software audio gain (in dB) at runtime. Called from
   /// the bundled `number` platform on slider moves and on restore.
   /// Out-of-range values are clamped to
   /// [internal::GAIN_DB_MIN, internal::GAIN_DB_MAX]; 0 dB takes the
@@ -219,7 +219,7 @@ class RtspAudioComponent : public Component {
   int32_t highcut_filter_a_q15_{internal::HIGH_CUT_DEFAULT_A_Q15};
   float highcut_filter_frequency_hz_{static_cast<float>(internal::HIGH_CUT_DEFAULT_CUTOFF_HZ)};
 
-  // Software input gain. Stored in Q8 so the RTP loop multiplies once
+  // Software audio gain. Stored in Q8 so the RTP loop multiplies once
   // per sample; `internal::GAIN_Q8_UNITY` (256) is the bit-identical
   // skip-scaling fast path. Atomic so the number platform can update it
   // from the HA control callback without locking against the audio loop.
