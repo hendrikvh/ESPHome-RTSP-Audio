@@ -49,7 +49,8 @@ rtsp_audio:
   port: 554
   packet_ms: 20
 
-# Optional diagnostic sensors
+# Optional diagnostic sensors.
+# See docs/configuration.md#diagnostic-sensors for the full reference.
 binary_sensor:
   - platform: rtsp_audio
     client_connected:
@@ -64,31 +65,23 @@ sensor:
   - platform: rtsp_audio
     bytes_sent:
       name: "RTSP bytes sent"
-    # CPU-use headroom indicator. <30 % plenty of headroom; 30-70 % normal;
-    # 70-90 % running hot (consider disabling features); sustained >90 %
-    # (or 100 %) means upgrade the chip (e.g. ESP32-S2 -> ESP32-S3) or back
-    # off DSP / sample rate.
+    # CPU headroom indicator. See docs/configuration.md#reading-cpu_use_pct.
     cpu_use_pct:
       name: "CPU use"
+    # Post-gain peak meter for setting the gain_db slider below.
+    # See docs/configuration.md#reading-peak_level_dbfs.
+    peak_level_dbfs:
+      name: "Peak level"
 
-# Optional sliders in Home Assistant. All persist across reboots.
-#   - low_cut_frequency_hz: low-cut filter cutoff in Hz, default 100.
-#     Raise it in noisier rooms or for non-voice sources.
-#   - high_cut_frequency_hz: high-cut filter cutoff in Hz, default
-#     16000 (off — at Nyquist for our 32 kHz audio, bit-identical
-#     passthrough). Lower it to roll off hiss or out-of-band content.
-#     Range 1000 to 16000 Hz.
-#   - gain_db: input gain in decibels, default 0 dB (bit-identical
-#     passthrough). Range -20 to +40 dB. Saturating clamp on overflow;
-#     never wraps.
+# Optional sliders in Home Assistant for the low-cut / high-cut filters and
+# the input gain. All persist across reboots.
+# See docs/configuration.md#audio-processing for ranges, defaults, and
+# tuning guidance.
 number:
   - platform: rtsp_audio
     low_cut_frequency_hz:
       name: "Low cut frequency"
-      unit_of_measurement: "Hz"
     high_cut_frequency_hz:
       name: "High cut frequency"
-      unit_of_measurement: "Hz"
     gain_db:
       name: "Audio gain"
-      unit_of_measurement: "dB"
