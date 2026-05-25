@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   (`gain_db`, -20 to +40 dB, 1 dB step, default 0 dB, persisted) so a
   quiet mic can be lifted without re-flashing. 0 dB is bit-identical
   to a no-gain build; overflow is saturating-clamped, never wrapped.
-  See [docs/configuration.md](docs/configuration.md#input-gain).
+  See [docs/configuration.md](docs/configuration.md#audio-gain).
 - **Low-cut filter, tunable from Home Assistant.** Opt-in `number:` on
   `platform: rtsp_audio` exposing a low-cut frequency slider
   (`low_cut_frequency_hz`, default 100 Hz, 20–500 Hz range) that

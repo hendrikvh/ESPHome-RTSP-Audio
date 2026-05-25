@@ -88,7 +88,7 @@ The timeout is a compile-time constant (`SESSION_TIMEOUT_SECONDS` in
 Stages run per sample inside the RTP send loop, in this order:
 
 ```
-Microphone → Ring buffer → Low-cut filter → High-cut filter → Input gain ─┬─→ L16 byteswap → RTP
+Microphone → Ring buffer → Low-cut filter → High-cut filter → Audio gain ─┬─→ L16 byteswap → RTP
                                                                           └─→ Peak meter → peak_level_dbfs sensor
 ```
 
@@ -151,9 +151,9 @@ than one** `rtsp_audio:` instance, add `rtsp_audio_id: <component-id>`
 next to `platform: rtsp_audio` so the entities bind to the right
 parent.
 
-### Input gain
+### Audio gain
 
-Software input gain applied after the cut filters and before the
+Software audio gain applied after the cut filters and before the
 RTP byteswap. Lets you lift the level of a quiet mic, or back it off
 for a loud source, without re-flashing or touching the I²S `gain_factor`
 (which rounds at the source). The setting persists across reboots.
@@ -163,8 +163,7 @@ change. The default is **0 dB** (unity); at exactly 0 dB the gain
 stage is skipped entirely and the byte stream is bit-identical to a
 build without the gain feature. On overflow the output is
 saturating-clamped to the int16 range, so loud passages compress flat
-rather than wrapping into scratchy noise. (For a soft knee instead of
-hard saturation, see the "Soft limiter" item on the roadmap.)
+rather than wrapping into scratchy noise.
 
 Internally the audio pipeline still multiplies by a Q8 linear
 coefficient — dB is just the unit the HA entity speaks. The device
