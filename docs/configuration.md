@@ -168,7 +168,7 @@ rather than wrapping into scratchy noise.
 Internally the audio pipeline still multiplies by a Q8 linear
 coefficient — dB is just the unit the HA entity speaks. The device
 boot log shows all three representations, e.g.
-`Input gain: +6.0 dB (2.00x, Q8=512)`, for debugging.
+`Audio gain: +6.0 dB (2.00x, Q8=512)`, for debugging.
 
 | Slider | Linear |
 |---|---|

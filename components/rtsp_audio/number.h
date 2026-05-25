@@ -61,7 +61,7 @@ class RtspAudioHighCutFilterNumber : public number::Number, public Component {
 };
 
 /// Home Assistant `number` entity bound to the parent RTSP component's
-/// software input gain, in dB. Mirrors `RtspAudioLowCutFilterNumber`:
+/// software audio gain, in dB. Mirrors `RtspAudioLowCutFilterNumber`:
 /// the persisted dB value is pushed to the parent via `set_gain_db()`
 /// before being published, so the very first RTP packet of a session
 /// already uses the restored gain.

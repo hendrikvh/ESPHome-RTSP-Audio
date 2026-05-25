@@ -6,7 +6,7 @@
 
 namespace esphome::rtsp_audio::internal {
 
-// Software input gain stage applied per sample, after the DC blocker and
+// Software audio gain stage applied per sample, after the DC blocker and
 // just before the L16 byteswap. Q8 fixed point so the inner loop is a
 // single integer multiply and an arithmetic shift on ESP32 / S2 (no FPU
 // per sample). The float-to-Q8 conversion only happens when the HA
