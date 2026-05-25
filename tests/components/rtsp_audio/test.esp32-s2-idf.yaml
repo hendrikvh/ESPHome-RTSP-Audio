@@ -40,3 +40,8 @@ microphone:
 rtsp_audio:
   microphone:
     microphone: demo_mic
+
+sensor:
+  - platform: rtsp_audio
+    peak_level_dbfs:
+      name: "Peak level"

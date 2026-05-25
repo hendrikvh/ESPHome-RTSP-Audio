@@ -15,6 +15,7 @@ DEPENDENCIES = ["rtsp_audio"]
 
 CONF_BYTES_SENT = "bytes_sent"
 CONF_CPU_USE_PCT = "cpu_use_pct"
+CONF_PEAK_LEVEL_DBFS = "peak_level_dbfs"
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -31,6 +32,17 @@ CONFIG_SCHEMA = cv.Schema(
             state_class=STATE_CLASS_MEASUREMENT,
             entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
         ),
+        cv.Optional(CONF_PEAK_LEVEL_DBFS): sensor.sensor_schema(
+            # Defaulting the unit string to "dBFS" (rather than "dB" via
+            # UNIT_DECIBEL) so users don't have to override it in every
+            # example YAML to get the correct full-scale-reference label
+            # showing in HA. ESPHome doesn't ship a UNIT_DECIBELS_FULL_SCALE
+            # constant, so a string literal is the canonical workaround.
+            unit_of_measurement="dBFS",
+            accuracy_decimals=0,
+            state_class=STATE_CLASS_MEASUREMENT,
+            entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+        ),
     }
 )
 
@@ -43,3 +55,6 @@ async def to_code(config):
     if conf := config.get(CONF_CPU_USE_PCT):
         sens = await sensor.new_sensor(conf)
         cg.add(parent.set_cpu_use_pct_sensor(sens))
+    if conf := config.get(CONF_PEAK_LEVEL_DBFS):
+        sens = await sensor.new_sensor(conf)
+        cg.add(parent.set_peak_level_dbfs_sensor(sens))

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -685,6 +686,11 @@ void RtspAudioComponent::start_streaming_() {
   this->stats_tick_ = 0;
   this->dc_blocker_state_ = {};
   this->high_cut_state_ = {};
+#ifdef USE_SENSOR
+  // Drop the carry-over from the previous session so the first 5 s window
+  // of this stream isn't biased by stale data.
+  this->window_peak_abs_ = 0;
+#endif
 
   this->mic_source_->start();
   ESP_LOGI(TAG, "Streaming RTP: %u samples/packet (%u ms)", this->samples_per_packet_, this->packet_duration_ms_);
@@ -696,6 +702,20 @@ void RtspAudioComponent::stop_streaming_() {
   this->streaming_ = false;
   if (this->mic_source_ != nullptr)
     this->mic_source_->stop();
+#ifdef USE_SENSOR
+  // Drop the peak meter to its silence floor whenever the mic stops
+  // delivering samples — covers both RTSP `PAUSE` (handled here only,
+  // close_session_ is not called) and `TEARDOWN` (via close_session_
+  // → stop_streaming_). Without this the meter latches at the last
+  // live reading until the next 5 s stats tick happens to fire on the
+  // already-reset window_peak_abs_. Also zero the running window so
+  // any tick that fires while paused doesn't republish stale audio.
+  this->window_peak_abs_ = 0;
+  if (this->peak_level_dbfs_sensor_ != nullptr && this->peak_level_published_dbfs_ != SILENCE_FLOOR_DBFS) {
+    this->peak_level_published_dbfs_ = SILENCE_FLOOR_DBFS;
+    this->peak_level_dbfs_sensor_->publish_state(static_cast<float>(SILENCE_FLOOR_DBFS));
+  }
+#endif
 }
 
 void RtspAudioComponent::close_session_() {
@@ -724,6 +744,8 @@ void RtspAudioComponent::close_session_() {
     this->cpu_use_published_tenths_ = 0;
     this->cpu_use_pct_sensor_->publish_state(0.0f);
   }
+  // Note: the peak meter's silence-floor publish lives in stop_streaming_
+  // (called above) so PAUSE gets the same treatment as TEARDOWN.
 #endif
   ESP_LOGI(TAG, "RTSP session closed");
 }
@@ -852,6 +874,35 @@ void RtspAudioComponent::log_stream_stats_(int64_t now) {
       this->bytes_sent_published_ = this->bytes_sent_;
       this->bytes_sent_sensor_->publish_state(this->bytes_sent_);
     }
+    // Peak meter (post-gain). 5 s window matches bytes_sent and is part of
+    // standardising the diagnostic publish rate. Floor at SILENCE_FLOOR_DBFS
+    // so silent windows are a real, in-band number rather than -inf, which
+    // keeps HA's history graph continuous and avoids surprising downstream
+    // filters/formulas.
+    if (this->peak_level_dbfs_sensor_ != nullptr) {
+      int16_t dbfs;
+      if (this->window_peak_abs_ == 0) {
+        dbfs = SILENCE_FLOOR_DBFS;
+      } else {
+        // INT16_MAX (32767) is full scale; 32768 is the conventional
+        // 0 dBFS reference so that INT16_MIN's magnitude doesn't read as
+        // a fraction of a dB over 0.
+        const float ratio = static_cast<float>(this->window_peak_abs_) / 32768.0f;
+        const float raw = 20.0f * std::log10(ratio);
+        const int rounded = static_cast<int>(std::lround(raw));
+        if (rounded < SILENCE_FLOOR_DBFS)
+          dbfs = SILENCE_FLOOR_DBFS;
+        else if (rounded > 0)
+          dbfs = 0;
+        else
+          dbfs = static_cast<int16_t>(rounded);
+      }
+      if (dbfs != this->peak_level_published_dbfs_) {
+        this->peak_level_published_dbfs_ = dbfs;
+        this->peak_level_dbfs_sensor_->publish_state(static_cast<float>(dbfs));
+      }
+      this->window_peak_abs_ = 0;
+    }
     // CPU-use: publish every other 5 s stats tick (~10 s cadence) so we get a
     // smooth, low-churn signal. The percentage is (busy µs spent in our loop +
     // mic callback) / (elapsed wall-clock µs since the last publish). Excludes
@@ -913,9 +964,19 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   // byteswap) in one pass over the payload. The pipeline header
   // centralises the stage order so future stages (soft limiter, gain
   // smoothing) don't touch this file.
-  internal::process_l16_payload_inplace(reinterpret_cast<int16_t *>(payload), this->samples_per_packet_,
-                                        this->dc_blocker_state_, this->lowcut_filter_r_q15_, this->high_cut_state_,
-                                        this->highcut_filter_a_q15_, this->gain_q8_.load(std::memory_order_relaxed));
+  const uint16_t packet_peak_abs = internal::process_l16_payload_inplace(
+      reinterpret_cast<int16_t *>(payload), this->samples_per_packet_, this->dc_blocker_state_,
+      this->lowcut_filter_r_q15_, this->high_cut_state_, this->highcut_filter_a_q15_,
+      this->gain_q8_.load(std::memory_order_relaxed));
+#ifdef USE_SENSOR
+  // One compare per packet (~50 Hz) regardless of sample rate — the
+  // per-sample work is already inside the pipeline. Window resets in
+  // log_stream_stats_ after each 5 s publish.
+  if (packet_peak_abs > this->window_peak_abs_)
+    this->window_peak_abs_ = packet_peak_abs;
+#else
+  (void)packet_peak_abs;
+#endif
 
   const size_t packet_len = RTP_HEADER_BYTES + payload_bytes;
 

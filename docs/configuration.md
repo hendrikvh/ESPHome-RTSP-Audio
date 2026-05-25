@@ -88,7 +88,8 @@ The timeout is a compile-time constant (`SESSION_TIMEOUT_SECONDS` in
 Stages run per sample inside the RTP send loop, in this order:
 
 ```
-Microphone → Ring buffer → Low-cut filter → High-cut filter → Input gain → L16 byteswap → RTP
+Microphone → Ring buffer → Low-cut filter → High-cut filter → Input gain ─┬─→ L16 byteswap → RTP
+                                                                          └─→ Peak meter → peak_level_dbfs sensor
 ```
 
 The cut filters run first so DC, rumble, and out-of-band hiss don't
@@ -97,6 +98,14 @@ L16 byteswap so what HA sees on the slider is exactly what leaves the
 wire. At default settings (high-cut = 20 kHz, gain = 0 dB) both the
 high-cut and gain stages are skipped and the byte stream is
 bit-identical to a build without those features.
+
+The **peak meter** is a read-only tap on the post-gain signal — it
+samples what is about to be byteswapped and sent, so it reflects
+exactly what the listener hears, including any clipping the gain
+stage introduces. It does not modify the audio; the bit-identical
+default-path guarantee is preserved. See
+[Reading `peak_level_dbfs`](#reading-peak_level_dbfs) for how to use
+it to set gain.
 
 ### Low and High Cut filters
 
@@ -132,10 +141,8 @@ number:
   - platform: rtsp_audio
     low_cut_frequency_hz:
       name: "Low cut frequency"
-      unit_of_measurement: "Hz"
     high_cut_frequency_hz:
       name: "High cut frequency"
-      unit_of_measurement: "Hz"
 ```
 
 Both entities are tagged `entity_category: config` so HA groups them
@@ -178,7 +185,6 @@ number:
   - platform: rtsp_audio
     gain_db:
       name: "Audio gain"
-      unit_of_measurement: "dB"
 ```
 
 Defaults: `initial_value: 0.0`, `min_value: -20.0`, `max_value: 40.0`,
@@ -200,13 +206,10 @@ number:
   - platform: rtsp_audio
     low_cut_frequency_hz:
       name: "Low cut frequency"
-      unit_of_measurement: "Hz"
     high_cut_frequency_hz:
       name: "High cut frequency"
-      unit_of_measurement: "Hz"
     gain_db:
       name: "Audio gain"
-      unit_of_measurement: "dB"
 ```
 
 ## Diagnostic sensors
@@ -222,6 +225,7 @@ component compiles them out unless you reference it from a
 | `client_ip` | text_sensor | IP address of the currently connected client, empty when none. | Edge-triggered at each session boundary. |
 | `bytes_sent` | sensor | Cumulative RTP payload bytes sent in the **current** session. Resets to 0 on each new `PLAY` and on session close. | Once per 5 s while streaming. |
 | `cpu_use_pct` | sensor | Percentage of wall-clock that the RTSP audio path (component `loop()` body + mic data callback) consumed in the last window. Range 0–100 %, one decimal. Resets at each `PLAY`; published as 0 on session close. | Once per ~10 s while streaming. |
+| `peak_level_dbfs` | sensor | Peak absolute sample value across the last window, expressed in dBFS (0 dBFS = full-scale clipping). Tapped **post-gain** so it shows what is actually streamed. Silent windows publish a `-100 dBFS` floor; on session close the floor is also published, matching how `cpu_use_pct` publishes 0 at rest. | Once per 5 s while streaming. |
 
 All entries are tagged `entity_category: diagnostic` so HA groups them on
 the device's diagnostics card rather than the main controls.
@@ -250,6 +254,8 @@ sensor:
       name: "RTSP bytes sent"
     cpu_use_pct:
       name: "CPU use"
+    peak_level_dbfs:
+      name: "Peak level"
 ```
 
 If you have **more than one** `rtsp_audio:` instance, add
@@ -293,6 +299,67 @@ idle, but a high reading reliably means the audio path is the
 bottleneck. The measurement itself adds well under 0.1 % of CPU, so it
 doesn't meaningfully bias the value it reports.
 
+#### Reading `peak_level_dbfs`
+
+The sensor exists to answer the practical question **"is the gain set
+right?"** Too high and the loudest peaks clip; too low and the stream
+lives in the noise floor and downstream consumers have to re-amplify
+along with whatever noise the mic picked up. The tap sits **after**
+the gain stage (see the [block diagram](#audio-processing)), so 0 dBFS
+on the meter means the gain stage is clipping — measuring pre-gain
+would hide exactly the failure mode this sensor is meant to surface.
+Values are the largest absolute sample seen in each 5 s window,
+rounded to whole dB, with a `-100 dBFS` floor for silence.
+
+Move the `Audio gain` slider and aim for peaks at **-6 to -3 dBFS**:
+
+| Reading | What it means | Action |
+|---|---|---|
+| **`-100 dBFS` (floor)** | No client streaming, or true silence in the window. | Expected when idle. While streaming, suggests the mic isn't picking anything up. |
+| **< -40 dBFS** | Under-driven — most of the int16 range is unused. | Raise the gain slider; downstream consumers are working with a tiny fraction of the available dynamic range. |
+| **-40 to -20 dBFS** | Quiet but usable. | Fine for very quiet sources; raise gain if the typical content is louder. |
+| **-20 to -6 dBFS** | Healthy working range. | Leave the gain alone. |
+| **-6 to -1 dBFS** | Approaching clip. | Acceptable for a worst-case peak, but keep an eye on it. Back gain off a few dB if peaks hit -1 often. |
+| **0 dBFS** | Clipping. | The gain stage is saturating loud passages flat. Reduce the gain slider until peaks settle below 0. |
+
+At the default 0 dB gain a typical room-level voice source reads in
+the -30 to -10 dBFS range; the exact value depends entirely on mic
+sensitivity, distance, and source loudness, which is why the meter
+exists in the first place.
+
+##### Slowing the meter down for long-term monitoring
+
+The 5 s cadence is tuned for setting gain interactively — fast enough
+that the meter responds to slider moves without making you wait. If
+you want a quieter signal for a long-term level-history graph in HA,
+layer an ESPHome filter on top rather than asking the component to
+publish less often (fast → slow is one filter away; slow → fast would
+need a firmware change). A `max` filter holds the loudest reading over
+its window, which is what you want here — averaging would smear a
+brief -3 dBFS clip together with the surrounding -50 dBFS silence into
+a meaningless -26 dBFS, masking exactly the event you care about. Each
+`window_size` unit is one 5 s publish, so `12` gives a 1-minute peak
+hold:
+
+```yaml
+sensor:
+  - platform: rtsp_audio
+    peak_level_dbfs:
+      name: "Peak level (1 min)"
+      filters:
+        - max:
+            window_size: 12
+            send_every: 12
+            send_first_at: 12
+```
+
+If you'd rather keep the ESPHome side simple and shape the graph in
+HA, the same effect is reachable with HA's
+[`statistics`](https://www.home-assistant.io/integrations/statistics/),
+[`min_max`](https://www.home-assistant.io/integrations/min_max/), or
+[`filter`](https://www.home-assistant.io/integrations/filter/)
+integrations on the entity.
+
 ## Minimal YAML block
 
 ```yaml
@@ -313,3 +380,40 @@ See [`example_rtsp_audio.yaml`](../example_rtsp_audio.yaml) for a complete node 
 - `microphone` (`platform: i2s_audio`)
 - `external_components` local source
 - `rtsp_audio` block
+
+## Interesting further reading
+
+### Why we byteswap before sending
+
+The block diagram in [Audio processing](#audio-processing) has an
+`L16 byteswap` stage right before RTP. It exists to bridge two
+opposite conventions:
+
+- **The ESP32 is little-endian.** Each 16-bit PCM sample sits in
+  memory low byte first. That's also how the I²S driver and the
+  ring buffer hand samples to us — no conversion has happened yet.
+- **RTP L16 is big-endian.** RFC 3551 §4.5.11 defines the `L16`
+  payload as "two's complement 16-bit samples in network byte
+  order." Network byte order is big-endian, same rule as every
+  other field in the RTP/IP/TCP/UDP headers.
+
+So without a swap, a sample that should sound like `0x1234` arrives
+on the wire as `0x3412`, and the receiver interprets it as a
+completely different (and usually much louder, sign-flipped) value.
+The audible result is loud white-noise-like garbage, not a quieter
+or distorted version of the original — the high and low bytes of
+every sample are transposed.
+
+We do the swap in place with `esphome::convert_big_endian()` on the
+payload region of the RTP packet we're about to send, so there's no
+second buffer involved. It's the last thing that touches the samples
+before `sendto()` / the TCP-interleaved write, which is why it
+appears at the end of the processing chain.
+
+For the same reason, the 16- and 32-bit fields of the RTP header
+(sequence number, timestamp, SSRC) also go through
+`convert_big_endian()` on the way out. Using one helper for both the
+header fields and the audio samples is what lets us avoid carrying
+our own `store_u16_be` / `store_u32_be` helpers — see
+[Implementation wins](architecture.md#implementation-wins) in the
+architecture notes.

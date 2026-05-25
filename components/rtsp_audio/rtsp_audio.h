@@ -81,6 +81,7 @@ class RtspAudioComponent : public Component {
 #ifdef USE_SENSOR
   void set_bytes_sent_sensor(sensor::Sensor *s) { this->bytes_sent_sensor_ = s; }
   void set_cpu_use_pct_sensor(sensor::Sensor *s) { this->cpu_use_pct_sensor_ = s; }
+  void set_peak_level_dbfs_sensor(sensor::Sensor *s) { this->peak_level_dbfs_sensor_ = s; }
 #endif
 
  protected:
@@ -240,6 +241,18 @@ class RtspAudioComponent : public Component {
   // on change without floating-point comparisons. UINT16_MAX means "never
   // published"; 0 means "last publish was 0.0 %", which is a valid value.
   uint16_t cpu_use_published_tenths_{UINT16_MAX};
+  // Post-gain peak meter. `window_peak_abs_` accumulates max |sample| seen
+  // across all packets in the current 5 s stats window, then resets after
+  // each publish. `peak_level_published_dbfs_` is the last value sent to HA
+  // in whole dB; INT16_MAX is the "never published" sentinel so the first
+  // value always emits even if it happens to land on the silence floor.
+  // The silence floor (a real, in-band number) is also what we publish on
+  // session close so HA's history graph stays a continuous numeric series
+  // rather than introducing an unavailable gap.
+  sensor::Sensor *peak_level_dbfs_sensor_{nullptr};
+  uint16_t window_peak_abs_{0};
+  int16_t peak_level_published_dbfs_{INT16_MAX};
+  static constexpr int16_t SILENCE_FLOOR_DBFS = -100;
 #endif
 
   // CPU-use self-instrumentation. `busy_usec_` accumulates the wall-clock µs

@@ -57,15 +57,14 @@ sensor:
       name: "RTSP bytes sent"
     cpu_use_pct:
       name: "CPU use"
+    peak_level_dbfs:
+      name: "Peak level"
 
 number:
   - platform: rtsp_audio
     low_cut_frequency_hz:
       name: "Low cut frequency"
-      unit_of_measurement: "Hz"
     high_cut_frequency_hz:
       name: "High cut frequency"
-      unit_of_measurement: "Hz"
     gain_db:
       name: "Audio gain"
-      unit_of_measurement: "dB"
