@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-05-25
 
 ### Changed
 
@@ -51,13 +51,22 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   quiet mic can be lifted without re-flashing. 0 dB is bit-identical
   to a no-gain build; overflow is saturating-clamped, never wrapped.
   See [docs/configuration.md](docs/configuration.md#audio-gain).
+- **High-cut filter, tunable from Home Assistant.** Opt-in `number:` on
+  `platform: rtsp_audio` exposing a high-cut frequency slider
+  (`high_cut_frequency_hz`, default 20000 Hz / off, 1000–20000 Hz
+  range) that rolls off energy above the cutoff — useful for taming
+  mic hiss, wind noise, and out-of-band content downstream consumers
+  don't need (narrow-band voice models, NVR storage). At the maximum
+  the stage is skipped and the audio path is bit-identical to a build
+  without it. See
+  [docs/configuration.md](docs/configuration.md#low-and-high-cut-filters).
 - **Low-cut filter, tunable from Home Assistant.** Opt-in `number:` on
   `platform: rtsp_audio` exposing a low-cut frequency slider
   (`low_cut_frequency_hz`, default 100 Hz, 20–500 Hz range) that
   strips MEMS-mic DC bias and sub-100 Hz rumble (HVAC, handling, wind)
   before the audio leaves the device, so downstream consumers get a
   cleaner signal with more usable dynamic range. See
-  [docs/configuration.md](docs/configuration.md#audio-processing).
+  [docs/configuration.md](docs/configuration.md#low-and-high-cut-filters).
 - **Diagnostic sensors for Home Assistant.** Opt-in `client_connected`
   (binary_sensor), `client_ip` (text_sensor), and `bytes_sent` (sensor)
   so an HA dashboard can see in real time whether a client is pulling
@@ -104,5 +113,6 @@ _First semi-stable release. Working nicely with BirdNET-Go so my wife is happy!_
 - Crash on no-PSRAM boards. `tx_buffer_` is now reserved up front so
   the RTP send path no longer triggers OOM at runtime.
 
-[Unreleased]: https://github.com/hendrikvh/ESPHome-RTSP-Audio/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/hendrikvh/ESPHome-RTSP-Audio/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/hendrikvh/ESPHome-RTSP-Audio/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/hendrikvh/ESPHome-RTSP-Audio/releases/tag/v0.0.1

@@ -117,10 +117,10 @@ On single-core chips the Wi-Fi stack and the audio loop share one core, so you'l
 
 ### ESP32-S2 (e.g. ESP32-S2-Saola-1)
 
-- **Works for the current implementation** (16 kHz mono, 20 ms packets, single
-  viewer). RAM is the tight resource: ~10–11 % of internal RAM is used
-  while idle, plus ~64 kB ring buffer + ~640 B RTP packet during an
-  active stream.
+- **Works for the current implementation** (32 kHz sample rate, mono,
+  20 ms packets, single viewer). RAM is the tight resource:
+  ~10–11 % of internal RAM is used while idle, plus ~64 kB ring buffer
+  + ~1.3 kB RTP packet during an active stream.
 - **No PSRAM on most S2 boards** — buffers fall back to internal heap.
   Verified to fit, but there's less headroom for additional audio /
   voice components on the same node.
@@ -163,10 +163,10 @@ Enable the `cpu_use_pct` diagnostic sensor (see [docs/configuration.md#diagnosti
 
 ### Audio format
 
-The mic source is set to **L16 PCM, 32 kHz, mono, 16-bit**. The format is fixed — no resampler is pulled in, so PCM flows straight from the mic into RTP.
+The mic source is set to **L16 PCM, 32 kHz sample rate, mono, 16-bit**. The format is fixed — no resampler is pulled in, so PCM flows straight from the mic into RTP.
 
-- **Usable bandwidth** — 32kHz sample rate means we can capture audio up to 16 kHz. This is currently not configurable.
-- **Why 16 kHz, not higher or lower** — the MEMS mics this targets are not high-fidelity capsules. Pushing past 16 kHz (32kHz sample rate) spends CPU and Wi-Fi bandwidth on content the mic can't faithfully capture.
+- **Usable audio bandwidth** — the **sample rate** is how many times per second the mic is measured; the **highest audio frequency** that can be faithfully captured is half of that, per the [Nyquist–Shannon sampling theorem](https://en.wikipedia.org/wiki/Nyquist%E2%80%93Shannon_sampling_theorem) (you need at least two samples per cycle to reconstruct a wave). So at a 32 kHz sample rate we can capture audio content up to **16 kHz**. This is currently not configurable.
+- **Why 32 kHz sample rate, not higher or lower** — the MEMS mics this targets are not high-fidelity capsules and don't faithfully reproduce content above ~16 kHz, so going higher (e.g. 48 kHz, giving 24 kHz of audio bandwidth) would just spend CPU and Wi-Fi on headroom the mic can't fill. Going lower (e.g. 16 kHz sample rate → 8 kHz audio bandwidth) would lose the upper octave of voice sibilance and most bird-call detail.
 - **CPU cost** — On an ESP32-S3 the audio path still sits well under the comfort budget described in the CPU-use sensor section above.
 - **Wi-Fi / packet size** — RTP packets are ~1.3 KB at the default 20 ms packet duration, still well under MTU. Both UDP and TCP transports are unaffected.
 
