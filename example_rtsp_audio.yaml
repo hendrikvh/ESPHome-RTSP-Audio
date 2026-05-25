@@ -74,7 +74,7 @@ sensor:
       name: "Peak level"
 
 # Optional sliders in Home Assistant for the low-cut / high-cut filters and
-# the input gain. All persist across reboots.
+# the audio gain. All persist across reboots.
 # See docs/configuration.md#audio-processing for ranges, defaults, and
 # tuning guidance.
 number:
