@@ -4,30 +4,32 @@ This component is configured under `rtsp_audio:` in your ESPHome node YAML.
 
 ## Component options
 
-- `id` *(optional, ID)*
-  - ESPHome component ID.
-- `microphone` *(optional block, defaults to `{}` but effectively required)*
-  - Microphone source block created with `microphone_source_schema`.
-  - Sub-options:
-    - `microphone` *(required)*: ID of the microphone component to consume.
-    - `bits_per_sample` *(optional, default `16`)*: constrained to `16` for this MVP.
-    - `channels` *(optional, default `[0]`)*: constrained to mono for this MVP.
-    - `gain_factor` *(optional, default `1`)*: software gain applied by `MicrophoneSource`.
-  - Why this shape: the same 16 kHz mono 16-bit PCM that `voice_assistant`
-    standardised on, picked so we can pass mic samples straight to RTP
-    without resampling. See
-    [Audio shape decision](architecture.md#audio-shape-16-khz-mono-16-bit-pcm).
-- `port` *(optional, default `554`)*
+- `microphone:` *(required in practice)*
+  - Points at the I²S microphone component you want to stream from
+    via a `microphone:` sub-key. The audio shape is locked to
+    **32 kHz mono 16-bit PCM** by the schema so samples pass straight
+    into RTP with no resampler pulled in — see [Audio format](../README.md#audio-format)
+    in the README for why 32 kHz is the sweet spot for the MEMS mics
+    this targets. The validator will reject any other `bits_per_sample`
+    or `channels` value, so don't set them. `gain_factor` is technically
+    accepted but use the [Audio gain](#audio-gain) HA slider instead —
+    it's adjustable at runtime and doesn't round at the source.
+- `port:` *(optional, default `554`)*
   - RTSP TCP listen port. 554 is the IANA-assigned RTSP port and the
     default for VLC and most NVRs. Use **8554** if your LAN firewall
     treats privileged ports specially. See
     [Port default decision](architecture.md#port-default-of-554).
-- `packet_ms` *(optional, default `20`, range `10..100`)*
-  - RTP packetization interval in milliseconds. 20 ms matches what most
-    RTP audio implementations use (G.711, Opus, L16). Lower means more
-    responsive but heavier per-packet overhead; higher saves bandwidth
-    at the cost of latency. See
+- `packet_ms:` *(optional, default `20`, range `10..100`)*
+  - RTP packetization interval in milliseconds. 20 ms matches what
+    most RTP audio implementations use (G.711, Opus, L16). Lower means
+    more responsive but heavier per-packet overhead; higher saves
+    bandwidth at the cost of latency. See
     [packet_ms decision](architecture.md#packet_ms-default-of-20-ms).
+- `id:` *(optional)*
+  - Only worth setting if you run more than one `rtsp_audio:` instance
+    on the same node — the `number:` / `sensor:` / `binary_sensor:` /
+    `text_sensor:` platforms then take `rtsp_audio_id:` to bind to the
+    right parent. With a single instance the binding is automatic.
 
 ## Validation constraints
 
@@ -35,8 +37,8 @@ From component schema/final validation:
 
 - Platform/framework: **ESP32 + ESP-IDF only**
   (`cv.only_on_esp32` + `cv.only_with_framework(Framework.ESP_IDF)`).
-- Source sample rate: **must be 16 kHz**
-  (`microphone.final_validate_microphone_source_schema(..., sample_rate=16000)`).
+- Source sample rate: **must be 32 kHz**
+  (`microphone.final_validate_microphone_source_schema(..., sample_rate=32000)`).
 - Source audio shape: **mono, 16-bit** after microphone source processing
   (`min/max_bits_per_sample=16`, `min/max_channels=1`).
 - Session model: **single client**
@@ -283,7 +285,7 @@ depend on what else the device is doing):
 | **> 90 % sustained** | Chip is at its limit. | Expect audio dropouts. Upgrade to a more capable board (e.g. ESP32-S2 → dual-core ESP32-S3) or disable features. |
 | **100 %** | Out of budget; audio will glitch. | Hard "upgrade the chip or turn things off" signal. |
 
-At the default 16 kHz mono 16-bit configuration with the default DSP
+At the default 32 kHz mono 16-bit configuration with the default DSP
 (low-cut at 100 Hz, high-cut off, gain at 0 dB) the value typically sits
 in the low single digits, so anything above that is your own feature
 configuration showing up in the measurement.

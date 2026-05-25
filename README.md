@@ -3,19 +3,17 @@
 [![CI](https://github.com/hendrikvh/ESPHome-RTSP-Audio/actions/workflows/ci.yml/badge.svg)](https://github.com/hendrikvh/ESPHome-RTSP-Audio/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/hendrikvh/ESPHome-RTSP-Audio?include_prereleases&sort=semver)](https://github.com/hendrikvh/ESPHome-RTSP-Audio/releases)
 
-Microphone audio streaming from anywhere there is WiFi using a tiny footprint and even tinier budget.
+This project is an RTSP audio streamer for ESP32 boards built as an ESPHome external component. It is designed to pair with cheap I²S MEMS microphones like the INMP441. The stream is standard RTSP/RTP, so anything that speaks RTSP can consume it. (VLC, ffmpeg, Frigate, BirdNET-Go, and most NVRs). Designed for local streaming on a LAN, not the public internet.
 
-This project is an RTSP audio streamer for ESP32 boards built as an ESPHome external component. It is designed to pair with cheap I²S MEMS microphones like the INMP441. The stream is standard RTSP/RTP, so anything that speaks RTSP can consume it. (VLC, ffmpeg, Frigate, BirdNET-Go, and most NVRs). Desinged for local streaming on a LAN, not the public internet.
+Microphone audio streaming from anywhere there is WiFi using a tiny footprint and even tinier budget. Built so my wife can identify birds in the garden with BirdNET-Go.
 
-Built so my wife can identify birds in the garden with BirdNET-Go.
-
-See [CHANGELOG.md](CHANGELOG.md) for release notes and : [`Configuration reference`](docs/configuration.md) for config.
+See [CHANGELOG.md](CHANGELOG.md) for release notes and the [configuration reference](docs/configuration.md) for all available options.
 
 ## Goals
 
 - Stream microphone audio off an ESP32 over standard RTSP.
 - Simple: single stream, fixed 32 kHz / mono / 16-bit audio.
-- Pair cleanly with ESPHome's mic stack.
+- Pair cleanly with ESPHome's mic stack — works with any `microphone:` platform that delivers 32 kHz mono 16-bit (e.g. `i2s_audio`).
 - Lightweight: Work on most ESP32s
 
 ## Features
@@ -41,7 +39,7 @@ Other nice touches:
 
 ## Intentional non-goals to prevent own-goals
 
-- **Only a single client at a time.** Only one RTSP client is served at a time. A second TCP connection is rejected. A single ring buffer drains into a single transport. Lifting this would mean per-client packet pacing, SSRC, and sequence numbering. Keep it simple.
+- **Only a single client at a time.** Only one RTSP client is served at a time. A second TCP connection is closed immediately (no RTSP-level response) and the device logs `Reject second RTSP client`. A single ring buffer drains into a single transport. Lifting this would mean per-client packet pacing, SSRC, and sequence numbering. Keep it simple.
 - **No sample-rate conversion.** The microphone source is fixed at 32 kHz mono 16-bit so PCM passes straight into RTP with no resampler pulled in. Keep it efficient.
 - **No Arduino framework support.** The component is gated to ESP-IDF. ESPHome itself is moving to ESP-IDF as the default and Arduino as the legacy path. We follow that direction rather than carry a second build configuration. Keep it targeted.
 - **IPv4 only for UDP.** TCP-interleaved RTP works on IPv4 and IPv6, but the UDP media path is IPv4-only. A UDP `SETUP` from an IPv6 client is rejected. If your network is IPv6-only, use TCP transport.
@@ -50,7 +48,7 @@ Other nice touches:
 
 This assumes you are comfortable with ESP boards and ESPHome. If not, now is a good time to learn!
 
-1. **Wire up an I²S microphone to an ESP32.** Defaults assume an INMP441 on an ESP32-S2. The [example YAML](example_rtsp_audio.yaml) uses `GPIO11` (WS), `GPIO9` (SCK), `GPIO12` (SD) but change this as neeed. Wire 3.3 V power and ground, then those three signals.
+1. **Wire up an I²S microphone to an ESP32.** Defaults assume an INMP441 on an ESP32-S2. The [example YAML](example_rtsp_audio.yaml) uses `GPIO11` (WS), `GPIO9` (SCK), `GPIO12` (SD) but change this as needed. Wire 3.3 V power and ground, then those three signals.
 
    <details>
    <summary>INMP441 wiring + what each pin does</summary>
@@ -73,7 +71,7 @@ This assumes you are comfortable with ESP boards and ESPHome. If not, now is a g
    WS and SCK are **outputs from the ESP32** (it's the I²S master). SD is the mic's only output.
    </details>
 
-2. **Grab the example YAML.** Copy [`example_rtsp_audio.yaml`](example_rtsp_audio.yaml) into your ESPHome config directory as e.g. `rtsp-audio.yaml`. The example already pulls this component from GitHub via `external_components` (referencing the latest released tag), so there's nothing to install separately.
+2. **Grab the example YAML.** Copy [`example_rtsp_audio.yaml`](example_rtsp_audio.yaml) into your ESPHome config directory as e.g. `rtsp-audio.yaml`. The example already pulls this component from GitHub via [`external_components`](https://esphome.io/components/external_components.html) (referencing the latest released tag), so there's nothing to install separately.
 
    Edit two things before flashing:
 
@@ -91,14 +89,16 @@ This assumes you are comfortable with ESP boards and ESPHome. If not, now is a g
    esphome run     rtsp-audio.yaml      # Install (USB or OTA)
    ```
 
-4. **Listen.** Point an RTSP client such as VLC at the deivce's IP. In VLC, File → Open Network → rtsp://<node-ip>. Any path the client asks for is accepted, so `rtsp://<node-ip>:554/` works just as well as `rtsp://<node-ip>:554/audio`.
+4. **Listen.** Point an RTSP client such as VLC at the device's IP. Any path the client asks for is accepted, so `rtsp://<node-ip>:554/` works just as well as `rtsp://<node-ip>:554/audio`.
 
-```bash
-# VLC (GUI):
-# ffplay (CLI): TCP transport is the more reliable default to suggest;
-#               UDP works too if you drop the -rtsp_transport flag.
-ffplay -rtsp_transport tcp rtsp://<node-ip>:554/
-```
+   Find `<node-ip>` in the ESPHome dashboard, your router's DHCP table, or by using the device's mDNS hostname — `rtsp://<esphome-name>.local:554/` works on most networks. Confirm the server is up by looking for `RTSP listening on port 554 (L16/32000/1, PT 96)` in the ESPHome logs, or by enabling the [client-connected diagnostic sensor](docs/configuration.md#diagnostic-sensors) and watching it flip in Home Assistant.
+
+   - **VLC (GUI)** — *File → Open Network…* and enter `rtsp://<node-ip>:554/`.
+   - **ffplay (CLI)** — TCP transport is the more reliable default; drop the `-rtsp_transport` flag to use UDP.
+
+     ```bash
+     ffplay -rtsp_transport tcp rtsp://<node-ip>:554/
+     ```
 
 Transport (UDP or TCP-interleaved) is negotiated per client at `SETUP` — VLC defaults to UDP, FFmpeg / Frigate / BirdNET-Go / most NVRs default to TCP. Both work, no configuration needed.
 
@@ -157,7 +157,8 @@ Enable the `cpu_use_pct` diagnostic sensor (see [docs/configuration.md#diagnosti
 
 ### Tested with
 
-- [ESP32-S2](https://www.wemos.cc/en/latest/s2/s2_mini.html) with [INMP441 MEMS microphone module](https://easyelecmodule.com/a-complete-guide-to-the-inmp441-i2s-microphone/).
+- CI builds the component for both `esp32-s2-idf` and `esp32-s3-idf` on every change (see [`tests/components/rtsp_audio/`](tests/components/rtsp_audio/)).
+- Hardware-verified on a [LOLIN S2 Mini (ESP32-S2)](https://www.wemos.cc/en/latest/s2/s2_mini.html) with an [INMP441 MEMS microphone module](https://easyelecmodule.com/a-complete-guide-to-the-inmp441-i2s-microphone/).
 
 ## How it works
 
@@ -170,9 +171,9 @@ The mic source is set to **L16 PCM, 32 kHz sample rate, mono, 16-bit**. The form
 - **CPU cost** — On an ESP32-S3 the audio path still sits well under the comfort budget described in the CPU-use sensor section above.
 - **Wi-Fi / packet size** — RTP packets are ~1.3 KB at the default 20 ms packet duration, still well under MTU. Both UDP and TCP transports are unaffected.
 
-# Support for all ESP32s
+## Support for all ESP32s
 
-#### Sized to fit ESP32 internal SRAM (no PSRAM required)
+### Sized to fit ESP32 internal SRAM (no PSRAM required)
 
 We want this to "just work" on any ESPHome-capable ESP32 — including the cheap WROOM boards everyone has in a drawer — so the buffer is sized for the no-PSRAM case. The RTSP client adds its own jitter buffer (VLC, ffmpeg, NVRs all hold ~500 ms–1 s before playback starts), so end-to-end resilience is closer to 1.5–2 s.
 
