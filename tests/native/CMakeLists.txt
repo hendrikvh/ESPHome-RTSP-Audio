@@ -34,6 +34,7 @@ add_executable(rtsp_audio_tests
   test_high_cut.cpp
   test_gain.cpp
   test_audio_pipeline.cpp
+  test_teardown_guard.cpp
 )
 target_include_directories(rtsp_audio_tests PRIVATE ${RTSP_AUDIO_SRC_DIR})
 target_link_libraries(rtsp_audio_tests PRIVATE GTest::gtest_main)

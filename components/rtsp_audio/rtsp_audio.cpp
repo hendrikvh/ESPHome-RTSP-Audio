@@ -261,6 +261,9 @@ void RtspAudioComponent::loop() {
     this->check_session_inactivity_();
   this->maybe_send_rtp_();
   this->flush_tx_buffer_();
+  if (this->mic_source_ != nullptr && this->teardown_guard_.poll(this->mic_source_->is_stopped())) {
+    this->deallocate_stream_buffers_();
+  }
 }
 
 void RtspAudioComponent::attach_mic_callback_() {
@@ -283,6 +286,11 @@ void RtspAudioComponent::attach_mic_callback_() {
 }
 
 bool RtspAudioComponent::allocate_stream_buffers_() {
+  // Rapid reconnect: a previous close_session_() may have left the dealloc
+  // pending while the mic task was still draining. Reuse the existing
+  // buffers and cancel the deferred free so loop() doesn't pull them out
+  // from under the new session.
+  this->teardown_guard_.cancel();
   // RingBuffer::create() already uses RAMAllocator<uint8_t> internally, so
   // ~1 s of jitter slack lands in PSRAM on capable boards automatically.
   // At 32 kHz mono 16-bit that's 64 KB — fits in internal RAM on no-PSRAM
@@ -730,7 +738,11 @@ void RtspAudioComponent::close_session_() {
   this->tx_buffer_.clear();
   this->session_active_ = false;
   this->interleaved_ = false;
-  this->deallocate_stream_buffers_();
+  // Defer ring-buffer / RTP-packet free until the mic task has actually
+  // exited. mic_source_->stop() above is async; a trailing callback may
+  // still be inside the data-callback lambda. loop() does the dealloc
+  // once mic_source_->is_stopped() flips true.
+  this->teardown_guard_.arm();
   this->publish_session_state_();
 #ifdef USE_SENSOR
   if (this->bytes_sent_sensor_ != nullptr && this->bytes_sent_published_ != 0) {

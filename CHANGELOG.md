@@ -69,6 +69,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   sleep, Wi-Fi drop) is now reaped after 60 s instead of blocking the
   single client slot for minutes until the OS-level TCP timeout fires.
 
+### Fixed
+
+- **Use-after-free on session teardown
+  ([#5](https://github.com/hendrikvh/ESPHome-RTSP-Audio/issues/5)).**
+  `deallocate_stream_buffers_()` could free the ring buffer while a
+  trailing I²S DMA callback on the mic's own FreeRTOS task was still
+  writing into it, occasionally crashing the node on `TEARDOWN` /
+  Wi-Fi drop / peer close. Deallocation is now deferred until
+  `mic_source_->is_stopped()` confirms the mic task has actually
+  exited, so the writer is guaranteed gone before the buffer goes
+  away.
+
 ## [0.0.1] - 2026-05-23
 
 _First semi-stable release. Working nicely with BirdNET-Go so my wife is happy!_
