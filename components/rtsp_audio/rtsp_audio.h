@@ -17,6 +17,7 @@
 #include "esphome/core/ring_buffer.h"
 #include "gain.h"
 #include "high_cut.h"
+#include "teardown_guard.h"
 
 #ifdef USE_BINARY_SENSOR
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -165,6 +166,9 @@ class RtspAudioComponent : public Component {
   // RTSP session state.
   bool session_active_{false};
   bool streaming_{false};
+  // Deferred ring-buffer / RTP-packet free across the mic's asynchronous
+  // stop. See teardown_guard.h for the full rationale.
+  internal::TeardownGuard teardown_guard_;
   uint32_t session_id_{1};
   std::string content_base_;
   std::string track_url_;
