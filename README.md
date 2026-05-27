@@ -24,7 +24,14 @@ Protocols:
 - Uncompressed **L16 PCM** audio — 32 kHz mono 16-bit, RTP payload type 96 (`L16/32000/1`). See [Audio format](#audio-format).
 
 Audio processing:
-- **High and low cut filters** — complementary one-pole IIR filters tunable from Home Assistant, negligible CPU cost. Low-cut on by default at 100 Hz to strip MEMS DC bias and rumble; high-cut off by default. See [docs/configuration.md#cut-filters](docs/configuration.md#cut-filters).
+- **Audio cleanup chain** — an always-on DC blocker (kills the MEMS capsule's DC bias before it eats headroom) plus complementary user-tunable 2nd-order Butterworth (biquad) low-cut and high-cut filters from Home Assistant — **−12 dB/oct** rolloff, maximally-flat passband. Low-cut on by default at 100 Hz; high-cut off by default. See [docs/configuration.md#cut-filters](docs/configuration.md#cut-filters).
+
+  **Bypass conventions:** drag the **low-cut slider to 0 Hz** to disable the low-cut entirely; drag the **high-cut slider to 16 kHz** (its max, Nyquist for 32 kHz audio) to disable the high-cut. With both off the chain is bit-identical to a build without those features (DC blocker always runs).
+
+  ![Audio cleanup chain — filter frequency responses](docs/images/filter-response.png)
+
+  *The −3 dB point is the half-power point — the universally agreed convention for defining a filter's cutoff frequency. See [Why is the cutoff frequency at −3 dB?](docs/configuration.md#why-is-the-cutoff-frequency-at-3-db) for more.*
+
 - **Audio gain in dB, tunable from Home Assistant** — software level adjustment applied after the cut filters. Default 0 dB (unity, bit-identical fast path), range −20 to +40 dB, persisted across reboots. Saturating clamp on overflow, never wraps. See [docs/configuration.md#audio-gain](docs/configuration.md#audio-gain).
 
 Diagnostics and metrics:

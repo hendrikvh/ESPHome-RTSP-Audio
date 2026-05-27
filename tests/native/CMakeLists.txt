@@ -31,7 +31,8 @@ set(RTSP_AUDIO_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../components/rtsp_audio)
 add_executable(rtsp_audio_tests
   test_session_timeout.cpp
   test_dc_blocker.cpp
-  test_high_cut.cpp
+  test_low_cut_biquad.cpp
+  test_high_cut_biquad.cpp
   test_gain.cpp
   test_audio_pipeline.cpp
   test_teardown_guard.cpp

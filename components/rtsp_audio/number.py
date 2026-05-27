@@ -20,18 +20,22 @@ CONF_LOW_CUT_FREQUENCY_HZ = "low_cut_frequency_hz"
 CONF_HIGH_CUT_FREQUENCY_HZ = "high_cut_frequency_hz"
 CONF_GAIN_DB = "gain_db"
 
-# Mirrors dc_blocker.h: DC_BLOCKER_DEFAULT_CUTOFF_HZ, MIN_CUTOFF_HZ,
-# MAX_CUTOFF_HZ. The C++ side also clamps internally, but having the
-# bounds here means HA only ever sees valid values on the slider.
+# Mirrors low_cut_biquad.h: LOW_CUT_DEFAULT_CUTOFF_HZ, MIN_CUTOFF_HZ,
+# MAX_CUTOFF_HZ. The slider extends below the active range so the
+# user can drag it to 0 Hz to disable the stage entirely — the C++
+# side's `low_cut_is_bypass()` treats anything below
+# LOW_CUT_MIN_CUTOFF_HZ (20 Hz) as off, mirroring how the high-cut
+# treats its max as off. Active range stays 20-500 Hz.
 DEFAULT_CUTOFF = 100.0
-MIN_CUTOFF = 20.0
+MIN_CUTOFF = 0.0
 MAX_CUTOFF = 500.0
 DEFAULT_STEP = 10.0
 
-# Mirrors high_cut.h: HIGH_CUT_DEFAULT_CUTOFF_HZ, MIN_CUTOFF_HZ,
+# Mirrors high_cut_biquad.h: HIGH_CUT_DEFAULT_CUTOFF_HZ, MIN_CUTOFF_HZ,
 # MAX_CUTOFF_HZ. The default is the max (16 kHz, Nyquist for our 32 kHz
-# audio), which the C++ side treats as "filter off" via a sentinel
-# coefficient — bit-identical to a build without this stage.
+# audio), which the C++ side treats as "filter off" via the
+# high_cut_is_bypass() sentinel — bit-identical to a build without this
+# stage.
 DEFAULT_HIGHCUT = 16000.0
 MIN_HIGHCUT = 1000.0
 MAX_HIGHCUT = 16000.0
