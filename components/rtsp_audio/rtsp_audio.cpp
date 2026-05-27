@@ -183,8 +183,13 @@ void RtspAudioComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  Session timeout: %us", SESSION_TIMEOUT_SECONDS);
   ESP_LOGCONFIG(TAG, "  Audio: %u Hz / %u ch / %u bit, %u samples/pkt", this->stream_info_.get_sample_rate(),
                 this->stream_info_.get_channels(), this->stream_info_.get_bits_per_sample(), this->samples_per_packet_);
-  ESP_LOGCONFIG(TAG, "  Low-cut filter frequency: %.1f Hz", this->lowcut_filter_frequency_hz_);
-  if (this->highcut_filter_a_q15_ == internal::HIGH_CUT_A_Q15_OFF) {
+  ESP_LOGCONFIG(TAG, "  DC blocker: on (5 Hz, always)");
+  if (this->lowcut_bypass_) {
+    ESP_LOGCONFIG(TAG, "  Low-cut filter: off (DC blocker still active)");
+  } else {
+    ESP_LOGCONFIG(TAG, "  Low-cut filter frequency: %.1f Hz", this->lowcut_filter_frequency_hz_);
+  }
+  if (this->highcut_bypass_) {
     ESP_LOGCONFIG(TAG, "  High-cut filter: off");
   } else {
     ESP_LOGCONFIG(TAG, "  High-cut filter frequency: %.1f Hz", this->highcut_filter_frequency_hz_);
@@ -206,8 +211,10 @@ void RtspAudioComponent::dump_config() {
 }
 
 void RtspAudioComponent::set_low_cut_frequency_hz(float hz) {
-  const float clamped = std::clamp(hz, static_cast<float>(internal::DC_BLOCKER_MIN_CUTOFF_HZ),
-                                   static_cast<float>(internal::DC_BLOCKER_MAX_CUTOFF_HZ));
+  // Slider can drag below LOW_CUT_MIN_CUTOFF_HZ for the "off" sentinel,
+  // and above the active range gets clamped. Symmetric with the
+  // high-cut: bypass at the slider's edge, no in-between weirdness.
+  const float clamped = std::clamp(hz, 0.0f, static_cast<float>(internal::LOW_CUT_MAX_CUTOFF_HZ));
   // Fall back to 32 kHz before stream_info_ is populated (e.g. when the
   // number entity's restore_value path fires during setup, before the
   // first SETUP latches the mic shape). The audio source is constrained
@@ -215,8 +222,14 @@ void RtspAudioComponent::set_low_cut_frequency_hz(float hz) {
   const float sr =
       this->stream_info_.get_sample_rate() != 0 ? static_cast<float>(this->stream_info_.get_sample_rate()) : 32000.0f;
   this->lowcut_filter_frequency_hz_ = clamped;
-  this->lowcut_filter_r_q15_ = internal::dc_blocker_r_q15_for(clamped, sr);
-  ESP_LOGD(TAG, "Low-cut filter frequency set to %.1f Hz (R_Q15=%d)", clamped, this->lowcut_filter_r_q15_);
+  this->lowcut_bypass_ = internal::low_cut_is_bypass(clamped);
+  if (this->lowcut_bypass_) {
+    this->lowcut_coeffs_ = {};
+    ESP_LOGD(TAG, "Low-cut filter off (cutoff %.1f Hz; DC blocker still active)", clamped);
+  } else {
+    this->lowcut_coeffs_ = internal::low_cut_butterworth_coeffs(clamped, sr);
+    ESP_LOGD(TAG, "Low-cut filter frequency set to %.1f Hz (Butterworth 2nd order)", clamped);
+  }
 }
 
 void RtspAudioComponent::set_high_cut_frequency_hz(float hz) {
@@ -229,11 +242,13 @@ void RtspAudioComponent::set_high_cut_frequency_hz(float hz) {
   const float sr =
       this->stream_info_.get_sample_rate() != 0 ? static_cast<float>(this->stream_info_.get_sample_rate()) : 32000.0f;
   this->highcut_filter_frequency_hz_ = clamped;
-  this->highcut_filter_a_q15_ = internal::high_cut_a_q15_for(clamped, sr);
-  if (this->highcut_filter_a_q15_ == internal::HIGH_CUT_A_Q15_OFF) {
+  this->highcut_bypass_ = internal::high_cut_is_bypass(clamped);
+  if (this->highcut_bypass_) {
+    this->highcut_coeffs_ = {};
     ESP_LOGD(TAG, "High-cut filter off (cutoff %.1f Hz)", clamped);
   } else {
-    ESP_LOGD(TAG, "High-cut filter frequency set to %.1f Hz (A_Q15=%d)", clamped, this->highcut_filter_a_q15_);
+    this->highcut_coeffs_ = internal::high_cut_butterworth_coeffs(clamped, sr);
+    ESP_LOGD(TAG, "High-cut filter frequency set to %.1f Hz (Butterworth 2nd order)", clamped);
   }
 }
 
@@ -693,7 +708,8 @@ void RtspAudioComponent::start_streaming_() {
   this->cpu_window_start_usec_ = this->last_rtp_usec_;
   this->stats_tick_ = 0;
   this->dc_blocker_state_ = {};
-  this->high_cut_state_ = {};
+  this->lowcut_state_ = {};
+  this->highcut_state_ = {};
 #ifdef USE_SENSOR
   // Drop the carry-over from the previous session so the first 5 s window
   // of this stream isn't biased by stale data.
@@ -977,8 +993,8 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   // centralises the stage order so future stages (soft limiter, gain
   // smoothing) don't touch this file.
   const uint16_t packet_peak_abs = internal::process_l16_payload_inplace(
-      reinterpret_cast<int16_t *>(payload), this->samples_per_packet_, this->dc_blocker_state_,
-      this->lowcut_filter_r_q15_, this->high_cut_state_, this->highcut_filter_a_q15_,
+      reinterpret_cast<int16_t *>(payload), this->samples_per_packet_, this->dc_blocker_state_, this->lowcut_state_,
+      this->lowcut_coeffs_, this->lowcut_bypass_, this->highcut_state_, this->highcut_coeffs_, this->highcut_bypass_,
       this->gain_q8_.load(std::memory_order_relaxed));
 #ifdef USE_SENSOR
   // One compare per packet (~50 Hz) regardless of sample rate — the

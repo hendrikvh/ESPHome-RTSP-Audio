@@ -90,16 +90,23 @@ The timeout is a compile-time constant (`SESSION_TIMEOUT_SECONDS` in
 Stages run per sample inside the RTP send loop, in this order:
 
 ```
-Microphone → Ring buffer → Low-cut filter → High-cut filter → Audio gain ─┬─→ L16 byteswap → RTP
-                                                                          └─→ Peak meter → peak_level_dbfs sensor
+Microphone → Ring buffer → DC blocker → Low-cut filter → High-cut filter → Audio gain ─┬─→ L16 byteswap → RTP
+                                                                                       └─→ Peak meter → peak_level_dbfs sensor
 ```
 
-The cut filters run first so DC, rumble, and out-of-band hiss don't
-eat headroom before the gain stage. Gain sits immediately before the
-L16 byteswap so what HA sees on the slider is exactly what leaves the
-wire. At default settings (high-cut = 20 kHz, gain = 0 dB) both the
-high-cut and gain stages are skipped and the byte stream is
-bit-identical to a build without those features.
+The **DC blocker** is a 1-pole high-pass at a fixed 5 Hz (well below
+anything audible) that strips the MEMS capsule's DC offset before any
+other stage sees it. It is always on — not user-configurable — so the
+rest of the chain always works on a centred signal even when the
+audible cut filters are bypassed. Costs one [MAC](#what-is-a-mac) per
+sample.
+
+The **cut filters** come next so the remaining DC/rumble and any
+out-of-band hiss don't eat gain-stage headroom. **Gain** sits
+immediately before the L16 byteswap so what HA sees on the slider is
+exactly what leaves the wire. At default settings (high-cut = 16 kHz,
+gain = 0 dB) the high-cut and gain stages are skipped — only the DC
+blocker and low-cut do per-sample work.
 
 The **peak meter** is a read-only tap on the post-gain signal — it
 samples what is about to be byteswapped and sent, so it reflects
@@ -111,12 +118,50 @@ it to set gain.
 
 ### Low and High Cut filters
 
-Two complementary one-pole IIR stages that allows us define the exact
-audio band we are interested in: a
+Two complementary **2nd-order Butterworth (biquad)** IIR stages that
+let us define the exact audio band we're interested in: a
 **low-cut** that strips energy *below* its cutoff, and a
-**high-cut** that rolls off energy *above* its cutoff. Each
-is exposed as its own Home Assistant number entity and persists across
+**high-cut** that rolls off energy *above* its cutoff. Each is
+exposed as its own Home Assistant number entity and persists across
 reboots.
+
+The user-tunable filters sit *downstream* of the always-on DC
+blocker (see [Audio processing](#audio-processing)), so their job is
+tone shaping — the DC handling is taken care of for them. That
+separation also means **either filter can be turned off entirely**
+without re-introducing the MEMS DC offset on the wire.
+
+**Bypass conventions.** Both filters use a slider-edge "off" sentinel
+so disabling them feels like a natural slider position rather than a
+hidden boolean:
+
+- **Low-cut off:** drag the `low_cut_frequency_hz` slider to **0 Hz**
+  (anything below 20 Hz disables the stage).
+- **High-cut off:** drag the `high_cut_frequency_hz` slider to its
+  maximum (**16 kHz** at the default 32 kHz audio = Nyquist).
+
+In either case the always-on DC blocker keeps running, so the signal
+that reaches the gain stage is still DC-clean.
+
+The Butterworth shape gives **−12 dB/oct** stopband rolloff with a
+maximally-flat passband — twice the rejection slope of a 1-pole IIR
+at the same cutoff frequency, with no in-band ripple. At the default
+100 Hz low-cut that means 50 Hz rumble is ~12 dB rejected (vs ~6 dB
+for the 1-pole shape). See
+[docs/images/filter-response.png](images/filter-response.png) for a
+combined magnitude plot of the DC blocker (5 Hz), low-cut (100 Hz),
+and high-cut (10 kHz) on a single graph.
+
+The biquad is implemented in single-precision float so the same audio
+cost lands on **every supported ESP target** — ESP32-S3 uses its FPU,
+S2 and C3 use software float (slower per op but still bounded). We
+chose this over a faster fixed-point implementation that would have
+needed integer-only support on S2 and C3 and FPU on S3, because the
+component is meant to ship to all of them without surprises. The
+biquad is roughly 5× the [MACs](#what-is-a-mac) of the previous
+1-pole, which matters mainly on the no-FPU parts — see the
+[CPU-use](#diagnostic-sensors) guidance if you're running close to
+the limit.
 
 **When to use the low-cut.** MEMS microphones like the INMP441 ship
 with a small DC offset and pick up a lot of low-frequency rumble (HVAC,
@@ -135,8 +180,8 @@ down from Home Assistant to engage it.
 
 | Entity | Config key | Default | Range | Step | Notes |
 |---|---|---|---|---|---|
-| Low cut | `low_cut_frequency_hz` | 100 Hz | 20–500 Hz | 10 Hz | Always on. 100 Hz leaves voice fundamentals intact while cutting the bulk of HVAC and handling rumble. |
-| High cut | `high_cut_frequency_hz` | 20000 Hz (off) | 1000–20000 Hz | 100 Hz | At the max the stage is skipped — bit-identical to a build without it. |
+| Low cut | `low_cut_frequency_hz` | 100 Hz | **0 Hz (off)** – 500 Hz | 10 Hz | 100 Hz leaves voice fundamentals intact while cutting the bulk of HVAC and handling rumble. Drag to 0 Hz to disable; the DC blocker keeps running. |
+| High cut | `high_cut_frequency_hz` | 16000 Hz (off) | 1000 – **16000 Hz (off)** | 100 Hz | At the max the stage is skipped — Nyquist for 32 kHz audio, so there's nothing left to cut anyway. |
 
 ```yaml
 number:
@@ -281,7 +326,7 @@ depend on what else the device is doing):
 |---|---|---|
 | **< 30 %** | Plenty of headroom. | Safe to add features (more aggressive DSP, future stereo, higher sample rate if it becomes configurable). |
 | **30 – 70 %** | Normal working range. | Audio is fine. Adding features will eat into the remaining budget. |
-| **70 – 90 %** | Running hot. | Brief audio glitches may appear when Wi-Fi gets busy or other tasks spike. Consider simplifying the DSP: raise the low-cut to skip the IIR work, drop the high-cut filter (set it to its max), lower the gain to take the bit-identical unity path. |
+| **70 – 90 %** | Running hot. | Brief audio glitches may appear when Wi-Fi gets busy or other tasks spike. Consider simplifying the DSP: drop the high-cut filter (set it to its max) — the biquad costs about 5× the MACs of the previous 1-pole, so disabling it claws back the most CPU. Lower the gain to take the bit-identical unity path too. |
 | **> 90 % sustained** | Chip is at its limit. | Expect audio dropouts. Upgrade to a more capable board (e.g. ESP32-S2 → dual-core ESP32-S3) or disable features. |
 | **100 %** | Out of budget; audio will glitch. | Hard "upgrade the chip or turn things off" signal. |
 
@@ -383,6 +428,59 @@ See [`example_rtsp_audio.yaml`](../example_rtsp_audio.yaml) for a complete node 
 - `rtsp_audio` block
 
 ## Interesting further reading
+
+### Why is the cutoff frequency at −3 dB?
+
+When a filter spec says "100 Hz cutoff," that means the filter is at
+**−3 dB at 100 Hz** — not that it suddenly blocks everything below
+that frequency. Two reasons that specific point became the convention:
+
+**It's the half-power point.** −3 dB means the signal amplitude has
+dropped to 1/√2 ≈ 0.707 of the passband level. Since power is
+proportional to amplitude², that is exactly half the original power
+still getting through. "Starts rolling off" is a fuzzy idea; "half
+power" is a clean, physically meaningful line to draw.
+
+**It falls out of the math naturally.** The simplest analog filter —
+a first-order RC circuit — has transfer function
+`H(f) = 1 / (1 + j·f/fc)`, where `fc = 1/(2πRC)`. Evaluating that
+at `f = fc` gives `|H| = 1/√2`, i.e. exactly −3 dB. The bilinear
+transform used to convert analog filter designs to digital preserves
+that point. So −3 dB at `fc` isn't an arbitrary convention bolted on
+later — it is where the pole of the original analog prototype
+naturally sits.
+
+All the filters in this component define their cutoff at the −3 dB
+point: the DC blocker at 5 Hz, the low-cut at whatever you set it to,
+and the high-cut likewise. The frequency response graph in
+[docs/images/filter-response.png](images/filter-response.png) shows
+the dotted −3 dB reference line crossing each filter curve exactly at
+its stated cutoff frequency.
+
+### What is a MAC?
+
+"MAC" stands for **multiply-accumulate**: the single fused operation
+`y += a * x` that sits at the heart of every IIR filter, FIR filter,
+FFT butterfly, and matrix multiply you've ever read about. It's also
+the smallest useful unit of DSP work that a CPU can do, which is why
+chip vendors quote MIPS in *MMAC/s* and DSP textbooks measure filter
+cost in *MACs per sample*.
+
+When this doc says "the biquad is roughly 5× the MACs of the
+previous 1-pole," it means: a 2nd-order biquad does five
+multiply-and-add operations per audio sample (`b0*x + b1*x[-1] +
+b2*x[-2] − a1*y[-1] − a2*y[-2]`) where the old 1-pole did one
+(`y = x − x[-1] + R*y[-1]` collapses to a single multiply +
+add/sub on each step). At 32 kHz mono, that's 32000 × 5 = 160k MACs
+per second per biquad — trivial on a chip with an FPU, more
+expensive on the no-FPU parts where each MAC is a software-float
+call.
+
+You'll see the term used a few places in this doc and in the
+component comments. The point is to give you a unit that's
+independent of the specific MCU: filter A costing "5 MACs per
+sample" tells you it's about 5× the work of filter B at "1 MAC per
+sample," whether you're on an S3 with an FPU or an S2 without one.
 
 ### Why we byteswap before sending
 

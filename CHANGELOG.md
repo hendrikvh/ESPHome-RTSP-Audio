@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **DC blocker.** A dedicated 1-pole high-pass at a fixed 5 Hz now
+  sits upstream of every other DSP stage and runs by default on every
+  packet — its only job is to kill the DC offset MEMS capsules
+  (INMP441 and friends) ship with, before it eats headroom in any of
+  the downstream stages. **Separates concerns cleanly:** the DC
+  blocker is hygiene; the user-tunable low-cut is tone shaping. One
+  MAC per sample, sub-audible cutoff. **Note:** the default install
+  is **no longer bit-identical to v0.1** — the DC blocker runs by
+  default. The audible change is the removal of MEMS DC bias, which
+  is desirable on every device the component targets.
+- **Low-cut bypass at 0 Hz.** The low-cut slider now ranges from
+  **0 Hz to 500 Hz**, with anything below the existing active
+  minimum (20 Hz) disabling the stage entirely — mirroring how
+  16 kHz (Nyquist) already disables the high-cut. Dragging the
+  slider to **0** is the natural "off" position. The always-on DC
+  blocker keeps running in either case, so disabling the audible
+  low-cut never re-introduces DC bias downstream.
+
+### Changed
+
+- **Cut filters upgraded to 2nd-order Butterworth.** Both the low-cut
+  and high-cut stages now use a 2nd-order Butterworth (biquad) shape
+  instead of the previous 1-pole IIR, doubling the rolloff from
+  **−6 dB/oct to −12 dB/oct**. At the default 100 Hz low-cut, 50 Hz
+  rumble is now ~12 dB rejected (vs ~6 dB), so HVAC and handling noise
+  drop noticeably more without moving the cutoff up into the voice
+  band. The Butterworth's defining feature — a **maximally-flat
+  passband** — also means voice timbre is preserved cleanly instead
+  of being gently tilted by the 1-pole's roll-in starting an octave
+  above the cutoff. The −3 dB cutoff frequency convention is unchanged,
+  so any persisted Home Assistant slider value keeps the same audible
+  meaning; the slope at the cutoff is the only thing that changes.
+  Implementation uses single-precision float in a direct-form-I
+  biquad — the same audio cost lands on every supported MCU
+  (ESP32-S3 uses its FPU, S2 and C3 use software float) rather than
+  depending on FPU-only fixed-point math that would have to choose one
+  target. User-facing config (cutoff ranges, defaults,
+  bypass-at-Nyquist behaviour) is unchanged. See
+  [docs/images/filter-response.png](docs/images/filter-response.png)
+  for a side-by-side magnitude plot, regenerable via
+  `scripts/plot_filter_response.py`.
+
 ## [0.1.0] - 2026-05-25
 
 ### Changed

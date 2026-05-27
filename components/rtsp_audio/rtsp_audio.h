@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 
+#include "biquad.h"
 #include "dc_blocker.h"
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/microphone/microphone_source.h"
@@ -16,7 +17,8 @@
 #include "esphome/core/component.h"
 #include "esphome/core/ring_buffer.h"
 #include "gain.h"
-#include "high_cut.h"
+#include "high_cut_biquad.h"
+#include "low_cut_biquad.h"
 #include "teardown_guard.h"
 
 #ifdef USE_BINARY_SENSOR
@@ -51,8 +53,10 @@ class RtspAudioComponent : public Component {
   /// Updates the low-cut filter frequency (in Hz) at runtime. Called
   /// from the bundled `number` platform when the HA slider moves and
   /// from `Number::setup()` when the persisted value is restored on boot.
-  /// Out-of-range values are clamped to [DC_BLOCKER_MIN_CUTOFF_HZ,
-  /// DC_BLOCKER_MAX_CUTOFF_HZ].
+  /// Values below LOW_CUT_MIN_CUTOFF_HZ (20 Hz) disable the stage
+  /// entirely (bit-identical bypass, mirroring the high-cut's
+  /// max-cutoff bypass). Out-of-range values above are clamped to
+  /// LOW_CUT_MAX_CUTOFF_HZ.
   void set_low_cut_frequency_hz(float hz);
 
   /// Updates the high-cut filter frequency (in Hz) at runtime. Called
@@ -205,22 +209,35 @@ class RtspAudioComponent : public Component {
   uint32_t mic_empty_callbacks_{0};
   uint32_t mic_bytes_received_{0};
 
-  // Low-cut filter (one-pole IIR high-pass) state, applied per sample in
-  // the RTP send loop. Reset to zero at the start of each PLAY so a new
-  // session doesn't inherit the previous one's transient. The Q15
-  // coefficient and the source-of-truth frequency are held separately
-  // because they survive across sessions and track the HA-controlled
-  // value.
+  // DC blocker (1-pole HP at a fixed 5 Hz). Sits upstream of every
+  // other DSP stage — always on, not user-configurable. Kills the
+  // MEMS DC offset before it reaches the low-cut or gain stages.
+  // Reset to zero at the start of each PLAY so a new session doesn't
+  // inherit the previous one's transient.
   internal::DcBlockerState dc_blocker_state_{};
-  int32_t lowcut_filter_r_q15_{internal::DC_BLOCKER_DEFAULT_R_Q15};
-  float lowcut_filter_frequency_hz_{static_cast<float>(internal::DC_BLOCKER_DEFAULT_CUTOFF_HZ)};
 
-  // High-cut filter (one-pole IIR low-pass) state. Same lifecycle as the
-  // low-cut: reset to zero at each PLAY so a new session doesn't
-  // inherit the previous one's transient. Defaults to the off sentinel
-  // so an un-touched HA install streams bit-identical bytes.
-  internal::HighCutState high_cut_state_{};
-  int32_t highcut_filter_a_q15_{internal::HIGH_CUT_DEFAULT_A_Q15};
+  // Low-cut filter (2nd-order Butterworth high-pass) state, applied per
+  // sample in the RTP send loop. Reset to zero at the start of each
+  // PLAY so a new session doesn't inherit the previous one's transient.
+  // Coefficients and the source-of-truth frequency are held separately
+  // because they survive across sessions and track the HA-controlled
+  // value. `lowcut_bypass_` mirrors the highcut equivalent: any HA
+  // slider value below LOW_CUT_MIN_CUTOFF_HZ (20 Hz) disables the
+  // stage, leaving only the always-on DC blocker upstream.
+  internal::BiquadState lowcut_state_{};
+  internal::BiquadCoeffs lowcut_coeffs_{
+      internal::low_cut_butterworth_coeffs(static_cast<float>(internal::LOW_CUT_DEFAULT_CUTOFF_HZ), 32000.0f)};
+  bool lowcut_bypass_{false};
+  float lowcut_filter_frequency_hz_{static_cast<float>(internal::LOW_CUT_DEFAULT_CUTOFF_HZ)};
+
+  // High-cut filter (2nd-order Butterworth low-pass) state. Same
+  // lifecycle as the low-cut: reset to zero at each PLAY so a new
+  // session doesn't inherit the previous one's transient. Defaults to
+  // the off sentinel (cutoff at Nyquist) so an un-touched HA install
+  // streams bit-identical bytes.
+  internal::BiquadState highcut_state_{};
+  internal::BiquadCoeffs highcut_coeffs_{};
+  bool highcut_bypass_{true};
   float highcut_filter_frequency_hz_{static_cast<float>(internal::HIGH_CUT_DEFAULT_CUTOFF_HZ)};
 
   // Software audio gain. Stored in Q8 so the RTP loop multiplies once
