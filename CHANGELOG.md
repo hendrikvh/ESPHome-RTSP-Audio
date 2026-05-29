@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **INMP441 I²S aliasing when `bits_per_sample: 16bit` is set
+  ([#7](https://github.com/hendrikvh/ESPHome-RTSP-Audio/issues/7)).**
+  Setting `bits_per_sample: 16bit` on the `microphone:` block causes
+  the I²S peripheral to misalign the 24-bit INMP441 data word, halving
+  the effective sample rate and aliasing all energy above 8 kHz back
+  onto the lower half of the spectrum. The fix is to use
+  `bits_per_sample: 32bit` — the 32-bit frame keeps the word correctly
+  aligned; the 8 LSBs are padding zeros and the driver handles them
+  correctly.
+
 ### Added
 
 - **DC blocker.** A dedicated 1-pole high-pass at a fixed 5 Hz now
