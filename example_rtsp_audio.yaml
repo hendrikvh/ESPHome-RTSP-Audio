@@ -39,7 +39,11 @@ microphone:
     adc_type: external
     i2s_din_pin: GPIO12   # INMP441 SD
     sample_rate: 32000
-    bits_per_sample: 16bit
+    # Must be 32bit — see https://github.com/hendrikvh/ESPHome-RTSP-Audio/issues/7
+    # The INMP441 delivers 24-bit data; the I²S peripheral must be configured for
+    # 32-bit words to keep the frame aligned. 16bit causes the effective sample rate
+    # to halve and frequencies above the midpoint to fold back (aliasing).
+    bits_per_sample: 32bit
     channel: left
 
 rtsp_audio:
