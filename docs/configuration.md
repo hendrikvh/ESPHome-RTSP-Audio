@@ -90,8 +90,8 @@ The timeout is a compile-time constant (`SESSION_TIMEOUT_SECONDS` in
 Stages run per sample inside the RTP send loop, in this order:
 
 ```
-Microphone → Ring buffer → DC blocker → Low-cut filter → High-cut filter → Audio gain ─┬─→ L16 byteswap → RTP
-                                                                                       └─→ Peak meter → peak_level_dbfs sensor
+Microphone → Ring buffer → DC blocker → Low-cut filter → High-cut filter → Audio gain → [Soft limiter] ─┬─→ L16 byteswap → RTP
+                                                                                                        └─→ Peak meter → peak_level_dbfs sensor
 ```
 
 The **DC blocker** is a 1-pole high-pass at a fixed 5 Hz (well below
@@ -108,13 +108,18 @@ exactly what leaves the wire. At default settings (high-cut = 16 kHz,
 gain = 0 dB) the high-cut and gain stages are skipped — only the DC
 blocker and low-cut do per-sample work.
 
-The **peak meter** is a read-only tap on the post-gain signal — it
-samples what is about to be byteswapped and sent, so it reflects
-exactly what the listener hears, including any clipping the gain
-stage introduces. It does not modify the audio; the bit-identical
-default-path guarantee is preserved. See
-[Reading `peak_level_dbfs`](#reading-peak_level_dbfs) for how to use
-it to set gain.
+The **soft limiter** is an opt-in peak limiter with envelope follower.
+It sits after gain and reduces the signal level smoothly when the
+envelope exceeds the threshold — so sustained loud passages stay near
+the threshold ceiling rather than hard-clipping flat at INT16_MAX. See
+[Soft limiter](#soft-limiter) below.
+
+The **peak meter** is a read-only tap on the post-gain (and
+post-limiter) signal — it samples what is about to be byteswapped and
+sent, so it reflects exactly what the listener hears. It does not
+modify the audio; the bit-identical default-path guarantee is
+preserved. See [Reading `peak_level_dbfs`](#reading-peak_level_dbfs)
+for how to use it to set gain.
 
 ### Low and High Cut filters
 
@@ -242,7 +247,7 @@ The +40 dB ceiling (100× linear) is deliberately generous so a very
 quiet MEMS mic in a large room can be lifted to a usable level. Above
 ~+18 dB you'll typically run into the saturating clamp on transients
 well before you run out of slider — that's the point at which the
-planned soft limiter becomes worth wiring in.
+[soft limiter](#soft-limiter) is worth enabling.
 
 The gain, low-cut, and high-cut entities share a single
 `platform: rtsp_audio` block — declare them under the same list item:
@@ -258,6 +263,56 @@ number:
       name: "Audio gain"
 ```
 
+### Soft limiter
+
+Post-gain peak limiter with 1-pole IIR envelope follower. Prevents the
+gain stage from hard-clipping loud transients: when the signal's
+running peak envelope exceeds the threshold, a proportional gain
+reduction is applied immediately and released gradually, so sustained
+loud passages stay near the threshold ceiling rather than producing
+flat-top distortion.
+
+Disabled by default (opt-in, like every other DSP stage). Enable via
+the `soft_limiter_enabled` switch in Home Assistant; the switch state
+is persisted across reboots.
+
+**When to use it.** At gain settings above ~+18 dB, transient peaks
+will occasionally hit the hard saturating clamp in the gain stage.
+The soft limiter sits just below that ceiling and smoothly reduces gain
+before the clamp fires, so the output sounds compressed rather than
+clipped. Enable the `limiter_gain_reduction_db` sensor to see how much
+the limiter is working; cross-reference with `peak_level_dbfs` to
+confirm peaks are staying near (not above) the threshold.
+
+**Parameter guide.**
+
+| Entity | Config key | Default | Range | Step | Notes |
+|---|---|---|---|---|---|
+| Enable | `soft_limiter_enabled` | off | — | — | Toggle in HA; persisted. Off = skipped, bit-identical to a build without this stage. |
+| Threshold | `soft_limiter_threshold_db` | −3 dBFS | −20 to 0 dBFS | 1 dB | The ceiling the limiter defends. Lower = more conservative (tighter ceiling, more audible compression). −3 dBFS gives comfortable headroom below the hard INT16 clip. |
+| Attack | `soft_limiter_attack_ms` | 5 ms | 0.1 to 50 ms | 0.1 ms | How quickly the envelope follower latches onto a rising peak. Shorter = catches fast transients more aggressively but can sound "pumpy". Longer = gentler onset, brief spikes may still clip. |
+| Release | `soft_limiter_release_ms` | 100 ms | 10 to 2000 ms | 10 ms | How quickly the gain reduction recovers after a loud passage. Shorter = faster recovery, potentially audible "pumping". Longer = smoother but keeps gain depressed longer between sentences. |
+
+```yaml
+number:
+  - platform: rtsp_audio
+    soft_limiter_threshold_db:
+      name: "Soft limiter threshold"
+    soft_limiter_attack_ms:
+      name: "Soft limiter attack"
+    soft_limiter_release_ms:
+      name: "Soft limiter release"
+
+switch:
+  - platform: rtsp_audio
+    soft_limiter_enabled:
+      name: "Soft limiter"
+```
+
+The three number entities can be declared in the same `platform: rtsp_audio`
+block as the cut filters and gain slider — they share the same schema
+block. The switch goes in its own `switch:` block.
+
 ## Diagnostic sensors
 
 A small, opinionated set of stream state is exposed to Home Assistant
@@ -272,6 +327,7 @@ component compiles them out unless you reference it from a
 | `bytes_sent` | sensor | Cumulative RTP payload bytes sent in the **current** session. Resets to 0 on each new `PLAY` and on session close. | Once per 5 s while streaming. |
 | `cpu_use_pct` | sensor | Percentage of wall-clock that the RTSP audio path (component `loop()` body + mic data callback) consumed in the last window. Range 0–100 %, one decimal. Resets at each `PLAY`; published as 0 on session close. | Once per ~10 s while streaming. |
 | `peak_level_dbfs` | sensor | Peak absolute sample value across the last window, expressed in dBFS (0 dBFS = full-scale clipping). Tapped **post-gain** so it shows what is actually streamed. Silent windows publish a `-100 dBFS` floor; on session close the floor is also published, matching how `cpu_use_pct` publishes 0 at rest. | Once per 5 s while streaming. |
+| `limiter_gain_reduction_db` | sensor | Maximum gain reduction applied by the soft limiter in the last window, in dB (0 = no limiting active, 3 = 3 dB of reduction). Useful for confirming the limiter is engaging and by how much. Publishes 0 when the limiter is bypassed or when no reduction occurred; publishes 0 on session close. | Once per 5 s while streaming. |
 
 All entries are tagged `entity_category: diagnostic` so HA groups them on
 the device's diagnostics card rather than the main controls.
@@ -302,6 +358,8 @@ sensor:
       name: "CPU use"
     peak_level_dbfs:
       name: "Peak level"
+    limiter_gain_reduction_db:
+      name: "Limiter gain reduction"
 ```
 
 If you have **more than one** `rtsp_audio:` instance, add
@@ -405,6 +463,16 @@ HA, the same effect is reachable with HA's
 [`min_max`](https://www.home-assistant.io/integrations/min_max/), or
 [`filter`](https://www.home-assistant.io/integrations/filter/)
 integrations on the entity.
+
+#### Reading `limiter_gain_reduction_db`
+
+The sensor answers the practical question **"is the limiter working, and is it working too hard?"**
+
+- **0 dB** — no gain reduction in the last 5 s window. Either the limiter is off, or it's on but all signals were below the threshold.
+- **1–3 dB** — light limiting, occasional peaks catching the threshold. Normal healthy operation when the gain is set aggressively.
+- **> 6 dB** — sustained heavy limiting. The limiter is actively compressing most of the signal energy. Either the gain is too high for the source level (back the `gain_db` slider off) or the threshold is too low (raise `soft_limiter_threshold_db` toward 0 dBFS).
+
+The sensor reports the **maximum** reduction seen in each 5 s window, so even a brief loud event that triggered 6 dB of gain reduction will show as 6 dB even if the rest of the window was quiet. Cross-reference with `peak_level_dbfs`: if that reads near the threshold and this reads a few dB, the limiter is doing its job correctly. If `peak_level_dbfs` is still 0 dBFS while this shows large reduction, the limiter is arriving too late (try a shorter attack time).
 
 ## Minimal YAML block
 

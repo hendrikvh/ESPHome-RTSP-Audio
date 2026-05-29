@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Soft limiter.** Opt-in post-gain peak limiter with 1-pole IIR
+  envelope follower. Addresses the hard saturating clamp that fires on
+  transients above ~+18 dB gain: instead of producing flat-top
+  distortion, the limiter applies proportional gain reduction once the
+  running peak envelope exceeds the threshold, and releases smoothly
+  after the transient passes. Controlled via a new `switch:` entity
+  (`soft_limiter_enabled`, disabled by default) plus three `number:`
+  entities in the existing `platform: rtsp_audio` block:
+  `soft_limiter_threshold_db` (−3 dBFS default, −20–0 dBFS),
+  `soft_limiter_attack_ms` (5 ms default, 0.1–50 ms), and
+  `soft_limiter_release_ms` (100 ms default, 10–2000 ms). All four
+  entities are persisted across reboots. The stage runs after the gain
+  stage and before the peak meter, so the `peak_level_dbfs` sensor
+  reflects limited output. With the switch off the stage is completely
+  bypassed — no CPU cost and bit-identical output. See
+  [docs/configuration.md#soft-limiter](docs/configuration.md#soft-limiter).
+- **Soft limiter gain-reduction sensor (`limiter_gain_reduction_db`).** Opt-in
+  `sensor:` on `platform: rtsp_audio` reporting the maximum gain reduction
+  applied by the soft limiter in each 5 s window, in dB (0 = no limiting
+  active, positive = limiting engaged). Follows the same publish-on-change
+  pattern as `peak_level_dbfs`: resets to 0 on session close, publishes 0
+  when the limiter is bypassed. See
+  [docs/configuration.md#reading-limiter_gain_reduction_db](docs/configuration.md#reading-limiter_gain_reduction_db).
+
 ## [0.2.0] - 2026-05-29
 
 ### Fixed

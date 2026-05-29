@@ -199,6 +199,12 @@ void RtspAudioComponent::dump_config() {
     const float linear = q8 / 256.0f;
     ESP_LOGCONFIG(TAG, "  Audio gain: %+.1f dB (%.2fx, Q8=%d)", internal::linear_to_db(linear), linear, q8);
   }
+  if (this->soft_limiter_bypass_) {
+    ESP_LOGCONFIG(TAG, "  Soft limiter: off");
+  } else {
+    ESP_LOGCONFIG(TAG, "  Soft limiter: on, threshold=%.1f dBFS, attack=%.1f ms, release=%.1f ms",
+                  this->soft_limiter_threshold_db_, this->soft_limiter_attack_ms_, this->soft_limiter_release_ms_);
+  }
 #ifdef USE_BINARY_SENSOR
   LOG_BINARY_SENSOR("  ", "Client Connected", this->client_connected_bs_);
 #endif
@@ -257,6 +263,33 @@ void RtspAudioComponent::set_gain_db(float db) {
   this->gain_q8_.store(q8, std::memory_order_relaxed);
   const float linear = q8 / 256.0f;
   ESP_LOGD(TAG, "Audio gain set to %+.1f dB (%.2fx, Q8=%d)", db, linear, q8);
+}
+
+void RtspAudioComponent::set_soft_limiter_enabled(bool enabled) {
+  this->soft_limiter_bypass_ = !enabled;
+  ESP_LOGD(TAG, "Soft limiter %s", enabled ? "enabled" : "disabled");
+}
+
+void RtspAudioComponent::set_soft_limiter_threshold_db(float db) {
+  const float clamped =
+      std::clamp(db, internal::SOFT_LIMITER_THRESHOLD_DB_MIN, internal::SOFT_LIMITER_THRESHOLD_DB_MAX);
+  this->soft_limiter_threshold_db_ = clamped;
+  this->soft_limiter_threshold_linear_ = internal::limiter_db_to_linear(clamped);
+  ESP_LOGD(TAG, "Soft limiter threshold set to %.1f dBFS (%.4f linear)", clamped, this->soft_limiter_threshold_linear_);
+}
+
+void RtspAudioComponent::set_soft_limiter_attack_ms(float ms) {
+  const float clamped = std::clamp(ms, internal::SOFT_LIMITER_ATTACK_MS_MIN, internal::SOFT_LIMITER_ATTACK_MS_MAX);
+  this->soft_limiter_attack_ms_ = clamped;
+  this->soft_limiter_attack_coeff_ = internal::limiter_time_coeff(clamped, 32000.0f);
+  ESP_LOGD(TAG, "Soft limiter attack set to %.1f ms (coeff=%.6f)", clamped, this->soft_limiter_attack_coeff_);
+}
+
+void RtspAudioComponent::set_soft_limiter_release_ms(float ms) {
+  const float clamped = std::clamp(ms, internal::SOFT_LIMITER_RELEASE_MS_MIN, internal::SOFT_LIMITER_RELEASE_MS_MAX);
+  this->soft_limiter_release_ms_ = clamped;
+  this->soft_limiter_release_coeff_ = internal::limiter_time_coeff(clamped, 32000.0f);
+  ESP_LOGD(TAG, "Soft limiter release set to %.1f ms (coeff=%.6f)", clamped, this->soft_limiter_release_coeff_);
 }
 
 void RtspAudioComponent::loop() {
@@ -710,10 +743,12 @@ void RtspAudioComponent::start_streaming_() {
   this->dc_blocker_state_ = {};
   this->lowcut_state_ = {};
   this->highcut_state_ = {};
+  this->soft_limiter_state_ = {};
 #ifdef USE_SENSOR
   // Drop the carry-over from the previous session so the first 5 s window
   // of this stream isn't biased by stale data.
   this->window_peak_abs_ = 0;
+  this->window_min_sl_gain_ = 1.0f;
 #endif
 
   this->mic_source_->start();
@@ -738,6 +773,11 @@ void RtspAudioComponent::stop_streaming_() {
   if (this->peak_level_dbfs_sensor_ != nullptr && this->peak_level_published_dbfs_ != SILENCE_FLOOR_DBFS) {
     this->peak_level_published_dbfs_ = SILENCE_FLOOR_DBFS;
     this->peak_level_dbfs_sensor_->publish_state(static_cast<float>(SILENCE_FLOOR_DBFS));
+  }
+  this->window_min_sl_gain_ = 1.0f;
+  if (this->limiter_gain_reduction_db_sensor_ != nullptr && this->limiter_gr_published_db_ != 0) {
+    this->limiter_gr_published_db_ = 0;
+    this->limiter_gain_reduction_db_sensor_->publish_state(0.0f);
   }
 #endif
 }
@@ -931,6 +971,26 @@ void RtspAudioComponent::log_stream_stats_(int64_t now) {
       }
       this->window_peak_abs_ = 0;
     }
+    // Limiter gain-reduction meter. Max reduction in the 5 s window, expressed
+    // as positive dB (0 = no limiting, 3 = 3 dB applied). When the limiter is
+    // bypassed, always publishes 0 (no reduction). Mirrors the peak-level
+    // publish-on-change pattern; resets the window after each publish.
+    if (this->limiter_gain_reduction_db_sensor_ != nullptr) {
+      int16_t gr_db;
+      if (this->soft_limiter_bypass_ || this->window_min_sl_gain_ >= 1.0f) {
+        gr_db = 0;
+      } else {
+        const float raw = -20.0f * std::log10(this->window_min_sl_gain_);
+        const int rounded = static_cast<int>(std::lround(raw));
+        // Clamp: gain is in (0,1] so reduction is in [0, ∞); practical ceiling ~40 dB.
+        gr_db = static_cast<int16_t>(rounded < 0 ? 0 : (rounded > 40 ? 40 : rounded));
+      }
+      if (gr_db != this->limiter_gr_published_db_) {
+        this->limiter_gr_published_db_ = gr_db;
+        this->limiter_gain_reduction_db_sensor_->publish_state(static_cast<float>(gr_db));
+      }
+      this->window_min_sl_gain_ = 1.0f;
+    }
     // CPU-use: publish every other 5 s stats tick (~10 s cadence) so we get a
     // smooth, low-churn signal. The percentage is (busy µs spent in our loop +
     // mic callback) / (elapsed wall-clock µs since the last publish). Excludes
@@ -995,13 +1055,19 @@ bool RtspAudioComponent::send_one_rtp_packet_() {
   const uint16_t packet_peak_abs = internal::process_l16_payload_inplace(
       reinterpret_cast<int16_t *>(payload), this->samples_per_packet_, this->dc_blocker_state_, this->lowcut_state_,
       this->lowcut_coeffs_, this->lowcut_bypass_, this->highcut_state_, this->highcut_coeffs_, this->highcut_bypass_,
-      this->gain_q8_.load(std::memory_order_relaxed));
+      this->gain_q8_.load(std::memory_order_relaxed), this->soft_limiter_state_, this->soft_limiter_bypass_,
+      this->soft_limiter_threshold_linear_, this->soft_limiter_attack_coeff_, this->soft_limiter_release_coeff_);
 #ifdef USE_SENSOR
   // One compare per packet (~50 Hz) regardless of sample rate — the
-  // per-sample work is already inside the pipeline. Window resets in
+  // per-sample work is already inside the pipeline. Windows reset in
   // log_stream_stats_ after each 5 s publish.
   if (packet_peak_abs > this->window_peak_abs_)
     this->window_peak_abs_ = packet_peak_abs;
+  if (!this->soft_limiter_bypass_) {
+    const float mg = this->soft_limiter_state_.packet_min_gain;
+    if (mg < this->window_min_sl_gain_)
+      this->window_min_sl_gain_ = mg;
+  }
 #else
   (void)packet_peak_abs;
 #endif

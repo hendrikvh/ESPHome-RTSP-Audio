@@ -45,3 +45,19 @@ sensor:
   - platform: rtsp_audio
     peak_level_dbfs:
       name: "Peak level"
+    limiter_gain_reduction_db:
+      name: "Limiter gain reduction"
+
+number:
+  - platform: rtsp_audio
+    soft_limiter_threshold_db:
+      name: "Soft limiter threshold"
+    soft_limiter_attack_ms:
+      name: "Soft limiter attack"
+    soft_limiter_release_ms:
+      name: "Soft limiter release"
+
+switch:
+  - platform: rtsp_audio
+    soft_limiter_enabled:
+      name: "Soft limiter"

@@ -84,6 +84,66 @@ class RtspAudioGainDbNumber : public number::Number, public Component {
   ESPPreferenceObject pref_;
 };
 
+/// Home Assistant `number` entity for the soft limiter threshold (dBFS).
+class RtspAudioSoftLimiterThresholdNumber : public number::Number, public Component {
+ public:
+  void set_parent(RtspAudioComponent *p) { this->parent_ = p; }
+  void set_initial_value(float v) { this->initial_value_ = v; }
+  void set_restore_value(bool b) { this->restore_value_ = b; }
+
+  void setup() override;
+  void dump_config() override;
+  float get_setup_priority() const override { return setup_priority::DATA; }
+
+ protected:
+  void control(float value) override;
+
+  RtspAudioComponent *parent_{nullptr};
+  float initial_value_{-3.0f};
+  bool restore_value_{true};
+  ESPPreferenceObject pref_;
+};
+
+/// Home Assistant `number` entity for the soft limiter attack time (ms).
+class RtspAudioSoftLimiterAttackMsNumber : public number::Number, public Component {
+ public:
+  void set_parent(RtspAudioComponent *p) { this->parent_ = p; }
+  void set_initial_value(float v) { this->initial_value_ = v; }
+  void set_restore_value(bool b) { this->restore_value_ = b; }
+
+  void setup() override;
+  void dump_config() override;
+  float get_setup_priority() const override { return setup_priority::DATA; }
+
+ protected:
+  void control(float value) override;
+
+  RtspAudioComponent *parent_{nullptr};
+  float initial_value_{5.0f};
+  bool restore_value_{true};
+  ESPPreferenceObject pref_;
+};
+
+/// Home Assistant `number` entity for the soft limiter release time (ms).
+class RtspAudioSoftLimiterReleaseMsNumber : public number::Number, public Component {
+ public:
+  void set_parent(RtspAudioComponent *p) { this->parent_ = p; }
+  void set_initial_value(float v) { this->initial_value_ = v; }
+  void set_restore_value(bool b) { this->restore_value_ = b; }
+
+  void setup() override;
+  void dump_config() override;
+  float get_setup_priority() const override { return setup_priority::DATA; }
+
+ protected:
+  void control(float value) override;
+
+  RtspAudioComponent *parent_{nullptr};
+  float initial_value_{100.0f};
+  bool restore_value_{true};
+  ESPPreferenceObject pref_;
+};
+
 }  // namespace esphome::rtsp_audio
 
 #endif  // USE_NUMBER

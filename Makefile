@@ -25,7 +25,7 @@ DOCKER_RUN = docker run --rm -t \
 
 .DEFAULT_GOAL := help
 
-.PHONY: help config compile compile-s2-idf compile-s3-idf lint test clean
+.PHONY: help config compile compile-s2-idf compile-s3-idf lint test cpp-test clean
 
 help: ## Show this help.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -60,7 +60,7 @@ compile-s2-idf: ## Build firmware for the ESP32-S2 + ESP-IDF test config.
 compile-s3-idf: ## Build firmware for the ESP32-S3 + ESP-IDF test config.
 	$(DOCKER_RUN) compile $(TESTS_DIR)/test.esp32-s3-idf.yaml
 
-test: ## Build and run host C++ unit tests in Docker (gtest, ctest).
+cpp-test: ## Build and run host C++ unit tests in Docker (gtest, ctest).
 	docker run --rm -t \
 		-v $(CURDIR):/src \
 		-v esphome-rtsp-audio-cpp-build:/src/tests/native/build \
@@ -75,6 +75,8 @@ test: ## Build and run host C++ unit tests in Docker (gtest, ctest).
 		       cmake -S tests/native -B tests/native/build -DCMAKE_BUILD_TYPE=Release && \
 		       cmake --build tests/native/build --parallel && \
 		       ctest --test-dir tests/native/build --output-on-failure"
+
+test: config cpp-test ## Validate schemas + run C++ unit tests (full local test suite).
 
 lint: ## Run pre-commit hooks against the whole repo.
 	docker run --rm -t \

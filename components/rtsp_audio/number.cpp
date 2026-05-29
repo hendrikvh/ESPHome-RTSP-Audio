@@ -96,6 +96,87 @@ void RtspAudioGainDbNumber::control(float value) {
     this->pref_.save(&value);
 }
 
+void RtspAudioSoftLimiterThresholdNumber::setup() {
+  float value = this->initial_value_;
+  if (this->restore_value_) {
+    this->pref_ = global_preferences->make_preference<float>(this->get_object_id_hash());
+    float stored;
+    if (this->pref_.load(&stored))
+      value = stored;
+  }
+  if (this->parent_ != nullptr)
+    this->parent_->set_soft_limiter_threshold_db(value);
+  this->publish_state(value);
+}
+
+void RtspAudioSoftLimiterThresholdNumber::dump_config() {
+  LOG_NUMBER("", "Soft limiter threshold", this);
+  ESP_LOGCONFIG(TAG, "  Initial value: %.1f dBFS", this->initial_value_);
+  ESP_LOGCONFIG(TAG, "  Restore value: %s", YESNO(this->restore_value_));
+}
+
+void RtspAudioSoftLimiterThresholdNumber::control(float value) {
+  if (this->parent_ != nullptr)
+    this->parent_->set_soft_limiter_threshold_db(value);
+  this->publish_state(value);
+  if (this->restore_value_)
+    this->pref_.save(&value);
+}
+
+void RtspAudioSoftLimiterAttackMsNumber::setup() {
+  float value = this->initial_value_;
+  if (this->restore_value_) {
+    this->pref_ = global_preferences->make_preference<float>(this->get_object_id_hash());
+    float stored;
+    if (this->pref_.load(&stored))
+      value = stored;
+  }
+  if (this->parent_ != nullptr)
+    this->parent_->set_soft_limiter_attack_ms(value);
+  this->publish_state(value);
+}
+
+void RtspAudioSoftLimiterAttackMsNumber::dump_config() {
+  LOG_NUMBER("", "Soft limiter attack time", this);
+  ESP_LOGCONFIG(TAG, "  Initial value: %.1f ms", this->initial_value_);
+  ESP_LOGCONFIG(TAG, "  Restore value: %s", YESNO(this->restore_value_));
+}
+
+void RtspAudioSoftLimiterAttackMsNumber::control(float value) {
+  if (this->parent_ != nullptr)
+    this->parent_->set_soft_limiter_attack_ms(value);
+  this->publish_state(value);
+  if (this->restore_value_)
+    this->pref_.save(&value);
+}
+
+void RtspAudioSoftLimiterReleaseMsNumber::setup() {
+  float value = this->initial_value_;
+  if (this->restore_value_) {
+    this->pref_ = global_preferences->make_preference<float>(this->get_object_id_hash());
+    float stored;
+    if (this->pref_.load(&stored))
+      value = stored;
+  }
+  if (this->parent_ != nullptr)
+    this->parent_->set_soft_limiter_release_ms(value);
+  this->publish_state(value);
+}
+
+void RtspAudioSoftLimiterReleaseMsNumber::dump_config() {
+  LOG_NUMBER("", "Soft limiter release time", this);
+  ESP_LOGCONFIG(TAG, "  Initial value: %.1f ms", this->initial_value_);
+  ESP_LOGCONFIG(TAG, "  Restore value: %s", YESNO(this->restore_value_));
+}
+
+void RtspAudioSoftLimiterReleaseMsNumber::control(float value) {
+  if (this->parent_ != nullptr)
+    this->parent_->set_soft_limiter_release_ms(value);
+  this->publish_state(value);
+  if (this->restore_value_)
+    this->pref_.save(&value);
+}
+
 }  // namespace esphome::rtsp_audio
 
 #endif  // USE_NUMBER

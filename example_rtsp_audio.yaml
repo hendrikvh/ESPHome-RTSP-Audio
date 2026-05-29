@@ -76,9 +76,15 @@ sensor:
     # See docs/configuration.md#reading-peak_level_dbfs.
     peak_level_dbfs:
       name: "Peak level"
+    # Soft limiter gain reduction meter — 0 dB when inactive, positive when limiting.
+    # See docs/configuration.md#soft-limiter for guidance.
+    limiter_gain_reduction_db:
+      name: "Limiter gain reduction"
+      filters:
+        - delta: 1
 
-# Optional sliders in Home Assistant for the low-cut / high-cut filters and
-# the audio gain. All persist across reboots.
+# Optional sliders in Home Assistant for the low-cut / high-cut filters,
+# audio gain, and soft limiter. All persist across reboots.
 # See docs/configuration.md#audio-processing for ranges, defaults, and
 # tuning guidance.
 number:
@@ -89,3 +95,18 @@ number:
       name: "High cut frequency"
     gain_db:
       name: "Audio gain"
+    # Soft limiter controls — tune after enabling the switch below.
+    # See docs/configuration.md#soft-limiter for guidance.
+    soft_limiter_threshold_db:
+      name: "Soft limiter threshold"
+    soft_limiter_attack_ms:
+      name: "Soft limiter attack"
+    soft_limiter_release_ms:
+      name: "Soft limiter release"
+
+# Enable the soft limiter to prevent hard clipping at high gain settings.
+# See docs/configuration.md#soft-limiter for guidance.
+switch:
+  - platform: rtsp_audio
+    soft_limiter_enabled:
+      name: "Soft limiter"

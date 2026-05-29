@@ -8,6 +8,7 @@
 #include "gain.h"
 #include "high_cut_biquad.h"
 #include "low_cut_biquad.h"
+#include "soft_limiter.h"
 
 namespace esphome::rtsp_audio::internal {
 
@@ -22,6 +23,7 @@ namespace esphome::rtsp_audio::internal {
 //          -> low-cut biquad     (bypassable: lowcut_bypass)
 //          -> high-cut biquad    (bypassable: highcut_bypass)
 //          -> gain_apply_q8      (bypassable: gain == GAIN_Q8_UNITY)
+//          -> soft_limiter_step  (bypassable: sl_bypass)
 //          -> peak tap -> byteswap -> store back
 //
 // The DC blocker always runs first — its job is to kill the MEMS
@@ -30,9 +32,10 @@ namespace esphome::rtsp_audio::internal {
 // to cope with a biased signal. One MAC per sample, sub-audible
 // cutoff (5 Hz).
 //
-// The low-cut, high-cut, and gain stages each have a bypass that the
-// pipeline short-circuits. With all three bypassed the pipeline is
-// bit-identical to a build without those features (DC blocker aside).
+// The low-cut, high-cut, gain, and soft-limiter stages each have a
+// bypass that the pipeline short-circuits. With all four bypassed the
+// pipeline is bit-identical to a build without those features (DC
+// blocker aside).
 //
 // The peak tap reads the post-gain sample (so it reflects what leaves
 // on the wire, including clipping the gain stage introduces) and
@@ -58,11 +61,14 @@ inline uint16_t abs_i16(int16_t s) {
 inline uint16_t process_l16_payload_inplace(int16_t *samples, size_t count, DcBlockerState &dc_state,
                                             BiquadState &lc_state, const BiquadCoeffs &lc_coeffs, bool lowcut_bypass,
                                             BiquadState &hc_state, const BiquadCoeffs &hc_coeffs, bool highcut_bypass,
-                                            int32_t gain_q8) {
+                                            int32_t gain_q8, SoftLimiterState &sl_state, bool sl_bypass,
+                                            float sl_threshold_linear, float sl_attack_coeff, float sl_release_coeff) {
   const bool apply_lowcut = !lowcut_bypass;
   const bool apply_highcut = !highcut_bypass;
   const bool apply_gain = (gain_q8 != GAIN_Q8_UNITY);
+  const bool apply_limiter = !sl_bypass;
   uint16_t peak_abs = 0;
+  float sl_min_gain = 1.0f;
 
   for (size_t i = 0; i < count; i++) {
     int16_t s = dc_blocker_step(samples[i], dc_state);
@@ -72,11 +78,18 @@ inline uint16_t process_l16_payload_inplace(int16_t *samples, size_t count, DcBl
       s = biquad_step(s, hc_state, hc_coeffs);
     if (apply_gain)
       s = gain_apply_q8(s, gain_q8);
+    if (apply_limiter) {
+      s = soft_limiter_step(s, sl_state, sl_threshold_linear, sl_attack_coeff, sl_release_coeff);
+      if (sl_state.last_gain < sl_min_gain)
+        sl_min_gain = sl_state.last_gain;
+    }
     const uint16_t a = abs_i16(s);
     if (a > peak_abs)
       peak_abs = a;
     samples[i] = static_cast<int16_t>(byteswap_u16(static_cast<uint16_t>(s)));
   }
+  if (apply_limiter)
+    sl_state.packet_min_gain = sl_min_gain;
   return peak_abs;
 }
 

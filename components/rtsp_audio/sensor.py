@@ -6,6 +6,7 @@ from esphome.const import (
     STATE_CLASS_MEASUREMENT,
     STATE_CLASS_TOTAL_INCREASING,
     UNIT_BYTES,
+    UNIT_DECIBEL,
     UNIT_PERCENT,
 )
 
@@ -16,6 +17,7 @@ DEPENDENCIES = ["rtsp_audio"]
 CONF_BYTES_SENT = "bytes_sent"
 CONF_CPU_USE_PCT = "cpu_use_pct"
 CONF_PEAK_LEVEL_DBFS = "peak_level_dbfs"
+CONF_LIMITER_GAIN_REDUCTION_DB = "limiter_gain_reduction_db"
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -43,6 +45,12 @@ CONFIG_SCHEMA = cv.Schema(
             state_class=STATE_CLASS_MEASUREMENT,
             entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
         ),
+        cv.Optional(CONF_LIMITER_GAIN_REDUCTION_DB): sensor.sensor_schema(
+            unit_of_measurement=UNIT_DECIBEL,
+            accuracy_decimals=0,
+            state_class=STATE_CLASS_MEASUREMENT,
+            entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+        ),
     }
 )
 
@@ -58,3 +66,6 @@ async def to_code(config):
     if conf := config.get(CONF_PEAK_LEVEL_DBFS):
         sens = await sensor.new_sensor(conf)
         cg.add(parent.set_peak_level_dbfs_sensor(sens))
+    if conf := config.get(CONF_LIMITER_GAIN_REDUCTION_DB):
+        sens = await sensor.new_sensor(conf)
+        cg.add(parent.set_limiter_gain_reduction_db_sensor(sens))

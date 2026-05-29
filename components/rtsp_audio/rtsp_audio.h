@@ -19,6 +19,7 @@
 #include "gain.h"
 #include "high_cut_biquad.h"
 #include "low_cut_biquad.h"
+#include "soft_limiter.h"
 #include "teardown_guard.h"
 
 #ifdef USE_BINARY_SENSOR
@@ -77,6 +78,24 @@ class RtspAudioComponent : public Component {
   /// path never sees dB.
   void set_gain_db(float db);
 
+  /// Enables or disables the soft limiter stage. Called from the
+  /// bundled `switch` platform when the HA toggle changes and on
+  /// restore at boot. Disabling sets the bypass flag so the stage is
+  /// skipped entirely (bit-identical to a build without the limiter).
+  void set_soft_limiter_enabled(bool enabled);
+
+  /// Updates the limiter threshold (in dBFS). Out-of-range values are
+  /// clamped to [SOFT_LIMITER_THRESHOLD_DB_MIN, SOFT_LIMITER_THRESHOLD_DB_MAX].
+  void set_soft_limiter_threshold_db(float db);
+
+  /// Updates the limiter attack time (in ms). Out-of-range values are
+  /// clamped to [SOFT_LIMITER_ATTACK_MS_MIN, SOFT_LIMITER_ATTACK_MS_MAX].
+  void set_soft_limiter_attack_ms(float ms);
+
+  /// Updates the limiter release time (in ms). Out-of-range values are
+  /// clamped to [SOFT_LIMITER_RELEASE_MS_MIN, SOFT_LIMITER_RELEASE_MS_MAX].
+  void set_soft_limiter_release_ms(float ms);
+
 #ifdef USE_BINARY_SENSOR
   void set_client_connected_binary_sensor(binary_sensor::BinarySensor *s) { this->client_connected_bs_ = s; }
 #endif
@@ -87,6 +106,7 @@ class RtspAudioComponent : public Component {
   void set_bytes_sent_sensor(sensor::Sensor *s) { this->bytes_sent_sensor_ = s; }
   void set_cpu_use_pct_sensor(sensor::Sensor *s) { this->cpu_use_pct_sensor_ = s; }
   void set_peak_level_dbfs_sensor(sensor::Sensor *s) { this->peak_level_dbfs_sensor_ = s; }
+  void set_limiter_gain_reduction_db_sensor(sensor::Sensor *s) { this->limiter_gain_reduction_db_sensor_ = s; }
 #endif
 
  protected:
@@ -246,6 +266,22 @@ class RtspAudioComponent : public Component {
   // from the HA control callback without locking against the audio loop.
   std::atomic<int32_t> gain_q8_{internal::GAIN_Q8_UNITY};
 
+  // Soft limiter (peak limiter with envelope follower). Sits after the
+  // gain stage; bypass_ defaults to true (opt-in, disabled until the
+  // HA switch is turned on). State is reset to zero at the start of
+  // each PLAY so a new session starts with a clean envelope estimate.
+  // Coefficients and threshold are recomputed whenever the HA sliders
+  // move, not per sample.
+  internal::SoftLimiterState soft_limiter_state_{};
+  bool soft_limiter_bypass_{true};
+  float soft_limiter_threshold_linear_{internal::limiter_db_to_linear(internal::SOFT_LIMITER_THRESHOLD_DB_DEFAULT)};
+  float soft_limiter_attack_coeff_{internal::limiter_time_coeff(internal::SOFT_LIMITER_ATTACK_MS_DEFAULT, 32000.0f)};
+  float soft_limiter_release_coeff_{internal::limiter_time_coeff(internal::SOFT_LIMITER_RELEASE_MS_DEFAULT, 32000.0f)};
+  // Stored in original units for dump_config.
+  float soft_limiter_threshold_db_{internal::SOFT_LIMITER_THRESHOLD_DB_DEFAULT};
+  float soft_limiter_attack_ms_{internal::SOFT_LIMITER_ATTACK_MS_DEFAULT};
+  float soft_limiter_release_ms_{internal::SOFT_LIMITER_RELEASE_MS_DEFAULT};
+
 #ifdef USE_BINARY_SENSOR
   binary_sensor::BinarySensor *client_connected_bs_{nullptr};
 #endif
@@ -274,6 +310,14 @@ class RtspAudioComponent : public Component {
   uint16_t window_peak_abs_{0};
   int16_t peak_level_published_dbfs_{INT16_MAX};
   static constexpr int16_t SILENCE_FLOOR_DBFS = -100;
+  // Soft limiter gain-reduction meter. Accumulates the per-packet minimum gain
+  // (0..1 float) across the 5 s window; published as dB of reduction (0 = no
+  // limiting, positive = limiting active). Mirrors the peak_level_dbfs pattern:
+  // max reduction in the window, resets after each publish. INT16_MAX as the
+  // "never published" sentinel so the first value always emits.
+  sensor::Sensor *limiter_gain_reduction_db_sensor_{nullptr};
+  float window_min_sl_gain_{1.0f};
+  int16_t limiter_gr_published_db_{INT16_MAX};
 #endif
 
   // CPU-use self-instrumentation. `busy_usec_` accumulates the wall-clock µs
