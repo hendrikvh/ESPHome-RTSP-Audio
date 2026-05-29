@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-29
+
 ### Fixed
 
 - **INMP441 I²S aliasing when `bits_per_sample: 16bit` is set
@@ -171,6 +173,7 @@ _First semi-stable release. Working nicely with BirdNET-Go so my wife is happy!_
 - Crash on no-PSRAM boards. `tx_buffer_` is now reserved up front so
   the RTP send path no longer triggers OOM at runtime.
 
-[Unreleased]: https://github.com/hendrikvh/ESPHome-RTSP-Audio/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/hendrikvh/ESPHome-RTSP-Audio/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/hendrikvh/ESPHome-RTSP-Audio/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hendrikvh/ESPHome-RTSP-Audio/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/hendrikvh/ESPHome-RTSP-Audio/releases/tag/v0.0.1
