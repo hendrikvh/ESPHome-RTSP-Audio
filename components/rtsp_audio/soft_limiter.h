@@ -78,7 +78,7 @@ inline float limiter_time_coeff(float time_ms, float sample_rate_hz) {
 // Mutates `state` in place. Coefficients must be pre-computed via
 // `limiter_time_coeff`; threshold_linear via `limiter_db_to_linear`.
 inline int16_t soft_limiter_step(int16_t sample, SoftLimiterState &state, float threshold_linear, float attack_coeff,
-                                  float release_coeff) {
+                                 float release_coeff) {
   // Normalise to ±1.0 using 32768 so INT16_MIN maps to exactly -1.0
   // (using 32767 would leave +1.0 unreachable for positive INT16_MAX).
   constexpr float kScale = 1.0f / 32768.0f;

@@ -53,7 +53,7 @@ TEST(SoftLimiter, GainReductionEngagesAboveThreshold) {
   // envelope converges. The steady-state output amplitude must be at or
   // below the threshold ceiling (~23,170 counts).
   SoftLimiterState state{};
-  constexpr int16_t kAmp = 30000;  // ~0.916 linear, well above -3 dBFS
+  constexpr int16_t kAmp = 30000;   // ~0.916 linear, well above -3 dBFS
   constexpr size_t kSettle = 4000;  // ~125 ms at 32 kHz; many attack time constants
   drive_limiter(state, kAmp, kSettle);
 
@@ -192,9 +192,9 @@ TEST(SoftLimiter, PipelineWithLimiterReducesClipping) {
                               hc_coeffs, /*highcut_bypass=*/true, high_gain, sl_on, /*sl_bypass=*/false, threshold,
                               attack, release);
 
-  process_l16_payload_inplace(without_limiter.data(), kCount, dc_off, lc_off, lc_coeffs, /*lowcut_bypass=*/true,
-                              hc_off, hc_coeffs, /*highcut_bypass=*/true, high_gain, sl_off, /*sl_bypass=*/true, 0.0f,
-                              0.0f, 0.0f);
+  process_l16_payload_inplace(without_limiter.data(), kCount, dc_off, lc_off, lc_coeffs, /*lowcut_bypass=*/true, hc_off,
+                              hc_coeffs, /*highcut_bypass=*/true, high_gain, sl_off, /*sl_bypass=*/true, 0.0f, 0.0f,
+                              0.0f);
 
   // Measure peak over the TAIL of the buffer (last quarter) after settling.
   // The first quarter may contain transient clips before the envelope converges.
@@ -284,7 +284,8 @@ TEST(SoftLimiterGainReduction, PacketMinGainBelowUnityWhenLimiting) {
 
   // Warm-up: drive the envelope well above threshold.
   std::vector<int16_t> warm(3200);
-  for (size_t i = 0; i < warm.size(); i++) warm[i] = (i & 1) ? -kAmp : kAmp;
+  for (size_t i = 0; i < warm.size(); i++)
+    warm[i] = (i & 1) ? -kAmp : kAmp;
   process_l16_payload_inplace(warm.data(), warm.size(), dc, lc, lc_coeffs, /*lowcut_bypass=*/true, hc, hc_coeffs,
                               /*highcut_bypass=*/true, GAIN_Q8_UNITY, sl, /*sl_bypass=*/false, kThreshold, kAttack,
                               kRelease);
@@ -293,7 +294,8 @@ TEST(SoftLimiterGainReduction, PacketMinGainBelowUnityWhenLimiting) {
   DcBlockerState dc2{};
   BiquadState lc2{}, hc2{};
   std::vector<int16_t> pkt(kCount);
-  for (size_t i = 0; i < kCount; i++) pkt[i] = (i & 1) ? -kAmp : kAmp;
+  for (size_t i = 0; i < kCount; i++)
+    pkt[i] = (i & 1) ? -kAmp : kAmp;
   process_l16_payload_inplace(pkt.data(), kCount, dc2, lc2, lc_coeffs, /*lowcut_bypass=*/true, hc2, hc_coeffs,
                               /*highcut_bypass=*/true, GAIN_Q8_UNITY, sl, /*sl_bypass=*/false, kThreshold, kAttack,
                               kRelease);
@@ -309,8 +311,10 @@ TEST(SoftLimiterGainReduction, PacketMinGainIsMinNotLast) {
   // lower of the two, not the final value.
   constexpr size_t kHalf = 1600;  // 50 ms each half
   std::vector<int16_t> samples(kHalf * 2);
-  for (size_t i = 0; i < kHalf; i++) samples[i] = (i & 1) ? -30000 : 30000;  // loud
-  for (size_t i = kHalf; i < kHalf * 2; i++) samples[i] = 500;                // quiet
+  for (size_t i = 0; i < kHalf; i++)
+    samples[i] = (i & 1) ? -30000 : 30000;  // loud
+  for (size_t i = kHalf; i < kHalf * 2; i++)
+    samples[i] = 500;  // quiet
 
   DcBlockerState dc{};
   BiquadState lc{}, hc{};
@@ -319,7 +323,8 @@ TEST(SoftLimiterGainReduction, PacketMinGainIsMinNotLast) {
 
   // Warm up the limiter first so it's already engaged at the start of the packet.
   std::vector<int16_t> warm(3200);
-  for (size_t i = 0; i < warm.size(); i++) warm[i] = (i & 1) ? -30000 : 30000;
+  for (size_t i = 0; i < warm.size(); i++)
+    warm[i] = (i & 1) ? -30000 : 30000;
   {
     DcBlockerState dw{};
     BiquadState lw{}, hw{};

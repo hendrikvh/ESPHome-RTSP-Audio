@@ -33,6 +33,17 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   when the limiter is bypassed. See
   [docs/configuration.md#reading-limiter_gain_reduction_db](docs/configuration.md#reading-limiter_gain_reduction_db).
 
+### Changed
+
+- **Minimum ESPHome version bumped to 2026.5.0.** The component now uses
+  the new first-class `ring_buffer` helper component introduced in ESPHome
+  2026.5.0. Users on older ESPHome installs must upgrade before updating
+  this component.
+- **Migrated to `esphome::ring_buffer::RingBuffer`** (from
+  `esphome/components/ring_buffer/ring_buffer.h`) as required by the
+  ESPHome 2026.5 [upgrade checklist](https://esphome.io/changelog/2026.5.0/#upgrade-checklist).
+  No behaviour change.
+
 ## [0.2.0] - 2026-05-29
 
 ### Fixed

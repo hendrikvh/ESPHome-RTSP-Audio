@@ -113,8 +113,8 @@ TEST(AudioPipeline, ByteswapIsActuallyApplied) {
   BiquadCoeffs hc_coeffs{};
   SoftLimiterState sl{};
   process_l16_payload_inplace(samples.data(), samples.size(), dc_pipeline, pipeline_state, lc, /*lowcut_bypass=*/false,
-                              hc, hc_coeffs, /*highcut_bypass=*/true, GAIN_Q8_UNITY, sl, /*sl_bypass=*/true, 0.0f,
-                              0.0f, 0.0f);
+                              hc, hc_coeffs, /*highcut_bypass=*/true, GAIN_Q8_UNITY, sl, /*sl_bypass=*/true, 0.0f, 0.0f,
+                              0.0f);
 
   DcBlockerState dc_manual{};
   BiquadState manual_state{};
@@ -152,10 +152,9 @@ TEST(AudioPipeline, PeakReturnMatchesOutput) {
   const BiquadCoeffs lc = default_lowcut();
   BiquadCoeffs hc_coeffs{};
   SoftLimiterState sl{};
-  const uint16_t peak =
-      process_l16_payload_inplace(samples.data(), samples.size(), dc, s, lc,
-                                  /*lowcut_bypass=*/false, hc, hc_coeffs, /*highcut_bypass=*/true, gain_q8_for(4.0f),
-                                  sl, /*sl_bypass=*/true, 0.0f, 0.0f, 0.0f);
+  const uint16_t peak = process_l16_payload_inplace(samples.data(), samples.size(), dc, s, lc,
+                                                    /*lowcut_bypass=*/false, hc, hc_coeffs, /*highcut_bypass=*/true,
+                                                    gain_q8_for(4.0f), sl, /*sl_bypass=*/true, 0.0f, 0.0f, 0.0f);
   EXPECT_EQ(output_peak_abs(samples), peak);
 }
 

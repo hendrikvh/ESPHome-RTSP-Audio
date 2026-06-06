@@ -345,7 +345,7 @@ bool RtspAudioComponent::allocate_stream_buffers_() {
   // boards (2 s would be 128 KB and routinely fails to allocate).
   if (this->ring_buffer_ == nullptr) {
     const size_t bytes = this->stream_info_.ms_to_bytes(1000);
-    this->ring_buffer_ = ::esphome::RingBuffer::create(bytes);
+    this->ring_buffer_ = ::esphome::ring_buffer::RingBuffer::create(bytes);
     if (this->ring_buffer_ == nullptr) {
       ESP_LOGE(TAG, "Ring buffer allocate failed (%zu bytes)", bytes);
       return false;

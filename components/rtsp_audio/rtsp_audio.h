@@ -13,9 +13,9 @@
 #include "dc_blocker.h"
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/microphone/microphone_source.h"
+#include "esphome/components/ring_buffer/ring_buffer.h"
 #include "esphome/components/socket/socket.h"
 #include "esphome/core/component.h"
-#include "esphome/core/ring_buffer.h"
 #include "gain.h"
 #include "high_cut_biquad.h"
 #include "low_cut_biquad.h"
@@ -38,7 +38,7 @@ namespace esphome::rtsp_audio {
 /// as RTP/AVP payload type 96 (`L16/<rate>/1`) over UDP (RFC 3551).
 ///
 /// The component plugs the mic via `MicrophoneSource::add_data_callback`
-/// into an `esphome::RingBuffer`, then drains the buffer in `loop()` at the
+/// into an `esphome::ring_buffer::RingBuffer`, then drains the buffer in `loop()` at the
 /// configured `packet_ms` cadence and emits RTP packets in network byte order.
 class RtspAudioComponent : public Component {
  public:
@@ -179,7 +179,7 @@ class RtspAudioComponent : public Component {
   audio::AudioStreamInfo stream_info_{};
   uint32_t samples_per_packet_{0};
 
-  std::unique_ptr<::esphome::RingBuffer> ring_buffer_;
+  std::unique_ptr<::esphome::ring_buffer::RingBuffer> ring_buffer_;
 
   // Sockets.
   std::unique_ptr<socket::Socket> listen_socket_;
