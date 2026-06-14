@@ -324,7 +324,7 @@ component compiles them out unless you reference it from a
 |---|---|---|---|
 | `client_connected` | binary_sensor | `on` while an RTSP session is active (between `SETUP` and `TEARDOWN` / network loss / 60 s idle timeout). | Edge-triggered at each session boundary. |
 | `client_ip` | text_sensor | IP address of the currently connected client, empty when none. | Edge-triggered at each session boundary. |
-| `bytes_sent` | sensor | Cumulative RTP payload bytes sent in the **current** session. Resets to 0 on each new `PLAY` and on session close. | Once per 5 s while streaming. |
+| `throughput_kbps` | sensor | Network-side stream throughput over the last 5 s window, in kbit/s (RTP payload + RTP/RTSP framing). 0 kbit/s on session close and across paused windows. | Once per 5 s while streaming. |
 | `cpu_use_pct` | sensor | Percentage of wall-clock that the RTSP audio path (component `loop()` body + mic data callback) consumed in the last window. Range 0–100 %, one decimal. Resets at each `PLAY`; published as 0 on session close. | Once per ~10 s while streaming. |
 | `peak_level_dbfs` | sensor | Peak absolute sample value across the last window, expressed in dBFS (0 dBFS = full-scale clipping). Tapped **post-gain** so it shows what is actually streamed. Silent windows publish a `-100 dBFS` floor; on session close the floor is also published, matching how `cpu_use_pct` publishes 0 at rest. | Once per 5 s while streaming. |
 | `limiter_gain_reduction_db` | sensor | Maximum gain reduction applied by the soft limiter in the last window, in dB (0 = no limiting active, 3 = 3 dB of reduction). Useful for confirming the limiter is engaging and by how much. Publishes 0 when the limiter is bypassed or when no reduction occurred; publishes 0 on session close. | Once per 5 s while streaming. |
@@ -352,8 +352,8 @@ text_sensor:
 
 sensor:
   - platform: rtsp_audio
-    bytes_sent:
-      name: "RTSP bytes sent"
+    throughput_kbps:
+      name: "RTSP throughput"
     cpu_use_pct:
       name: "CPU use"
     peak_level_dbfs:
@@ -367,11 +367,13 @@ If you have **more than one** `rtsp_audio:` instance, add
 sensor binds to the right parent. With a single instance the binding is
 resolved automatically.
 
-`bytes_sent` is the raw RTP payload byte count and is a monotonic
-counter within a session, so it pairs well with HA's
-[`derivative` sensor](https://www.home-assistant.io/integrations/derivative/)
-or [Riemann sum](https://www.home-assistant.io/integrations/integration/)
-to derive a bitrate.
+`throughput_kbps` reports an already-derived rate (delta-bytes over the
+5 s stats window, expressed in kbit/s including RTP/RTSP framing
+overhead), so you can graph the stream's health directly without
+plumbing the value through HA's `derivative` integration. A 32 kHz /
+16-bit mono session settles at ~520 kbit/s; sustained dips below that
+during an active session usually indicate the network — not the
+encoder — is the bottleneck.
 
 #### Reading `cpu_use_pct`
 

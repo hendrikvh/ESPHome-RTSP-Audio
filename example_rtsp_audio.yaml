@@ -67,8 +67,14 @@ text_sensor:
 
 sensor:
   - platform: rtsp_audio
-    bytes_sent:
-      name: "RTSP bytes sent"
+    throughput_kbps:
+      name: "RTSP throughput"
+      # Reported in kbit/s. To graph kbyte/s instead, add a multiply filter
+      # (kbyte/s = kbit/s ÷ 8) and override the unit so HA renders it
+      # correctly:
+      #   unit_of_measurement: "kB/s"
+      #   filters:
+      #     - multiply: 0.125
     # CPU headroom indicator. See docs/configuration.md#reading-cpu_use_pct.
     cpu_use_pct:
       name: "CPU use"

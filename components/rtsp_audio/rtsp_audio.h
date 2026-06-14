@@ -21,6 +21,7 @@
 #include "low_cut_biquad.h"
 #include "soft_limiter.h"
 #include "teardown_guard.h"
+#include "throughput_rate.h"
 
 #ifdef USE_BINARY_SENSOR
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -103,7 +104,7 @@ class RtspAudioComponent : public Component {
   void set_client_ip_text_sensor(text_sensor::TextSensor *s) { this->client_ip_ts_ = s; }
 #endif
 #ifdef USE_SENSOR
-  void set_bytes_sent_sensor(sensor::Sensor *s) { this->bytes_sent_sensor_ = s; }
+  void set_throughput_kbps_sensor(sensor::Sensor *s) { this->throughput_kbps_sensor_ = s; }
   void set_cpu_use_pct_sensor(sensor::Sensor *s) { this->cpu_use_pct_sensor_ = s; }
   void set_peak_level_dbfs_sensor(sensor::Sensor *s) { this->peak_level_dbfs_sensor_ = s; }
   void set_limiter_gain_reduction_db_sensor(sensor::Sensor *s) { this->limiter_gain_reduction_db_sensor_ = s; }
@@ -218,6 +219,7 @@ class RtspAudioComponent : public Component {
   uint32_t rtp_packets_sent_{0};
   uint32_t bytes_sent_{0};
   uint32_t stats_last_packets_{0};
+  uint32_t stats_last_bytes_{0};
   int64_t last_stats_usec_{0};
   int64_t last_packet_usec_{0};
   bool first_packet_logged_{false};
@@ -291,8 +293,8 @@ class RtspAudioComponent : public Component {
   std::string client_ip_published_;
 #endif
 #ifdef USE_SENSOR
-  sensor::Sensor *bytes_sent_sensor_{nullptr};
-  uint32_t bytes_sent_published_{UINT32_MAX};
+  sensor::Sensor *throughput_kbps_sensor_{nullptr};
+  uint16_t throughput_kbps_published_{UINT16_MAX};
   sensor::Sensor *cpu_use_pct_sensor_{nullptr};
   // Last published percentage as tenths-of-percent (0..1000), so we can publish
   // on change without floating-point comparisons. UINT16_MAX means "never

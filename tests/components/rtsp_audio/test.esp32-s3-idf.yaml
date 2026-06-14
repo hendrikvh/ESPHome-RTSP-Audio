@@ -53,8 +53,8 @@ text_sensor:
 
 sensor:
   - platform: rtsp_audio
-    bytes_sent:
-      name: "RTSP bytes sent"
+    throughput_kbps:
+      name: "RTSP throughput"
     cpu_use_pct:
       name: "CPU use"
     peak_level_dbfs:

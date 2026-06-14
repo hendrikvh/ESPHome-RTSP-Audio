@@ -4,8 +4,6 @@ import esphome.config_validation as cv
 from esphome.const import (
     ENTITY_CATEGORY_DIAGNOSTIC,
     STATE_CLASS_MEASUREMENT,
-    STATE_CLASS_TOTAL_INCREASING,
-    UNIT_BYTES,
     UNIT_DECIBEL,
     UNIT_PERCENT,
 )
@@ -14,7 +12,7 @@ from . import CONF_RTSP_AUDIO_ID, RtspAudioComponent
 
 DEPENDENCIES = ["rtsp_audio"]
 
-CONF_BYTES_SENT = "bytes_sent"
+CONF_THROUGHPUT_KBPS = "throughput_kbps"
 CONF_CPU_USE_PCT = "cpu_use_pct"
 CONF_PEAK_LEVEL_DBFS = "peak_level_dbfs"
 CONF_LIMITER_GAIN_REDUCTION_DB = "limiter_gain_reduction_db"
@@ -22,10 +20,13 @@ CONF_LIMITER_GAIN_REDUCTION_DB = "limiter_gain_reduction_db"
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_RTSP_AUDIO_ID): cv.use_id(RtspAudioComponent),
-        cv.Optional(CONF_BYTES_SENT): sensor.sensor_schema(
-            unit_of_measurement=UNIT_BYTES,
+        cv.Optional(CONF_THROUGHPUT_KBPS): sensor.sensor_schema(
+            # ESPHome ships no UNIT_KILOBIT_PER_SECOND constant, so we use a
+            # string literal — same workaround as the "dBFS" peak-meter unit
+            # below.
+            unit_of_measurement="kbit/s",
             accuracy_decimals=0,
-            state_class=STATE_CLASS_TOTAL_INCREASING,
+            state_class=STATE_CLASS_MEASUREMENT,
             entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
         ),
         cv.Optional(CONF_CPU_USE_PCT): sensor.sensor_schema(
@@ -57,9 +58,9 @@ CONFIG_SCHEMA = cv.Schema(
 
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_RTSP_AUDIO_ID])
-    if conf := config.get(CONF_BYTES_SENT):
+    if conf := config.get(CONF_THROUGHPUT_KBPS):
         sens = await sensor.new_sensor(conf)
-        cg.add(parent.set_bytes_sent_sensor(sens))
+        cg.add(parent.set_throughput_kbps_sensor(sens))
     if conf := config.get(CONF_CPU_USE_PCT):
         sens = await sensor.new_sensor(conf)
         cg.add(parent.set_cpu_use_pct_sensor(sens))

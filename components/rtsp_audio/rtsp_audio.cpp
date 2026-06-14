@@ -212,7 +212,7 @@ void RtspAudioComponent::dump_config() {
   LOG_TEXT_SENSOR("  ", "Client IP", this->client_ip_ts_);
 #endif
 #ifdef USE_SENSOR
-  LOG_SENSOR("  ", "Bytes Sent", this->bytes_sent_sensor_);
+  LOG_SENSOR("  ", "Throughput", this->throughput_kbps_sensor_);
 #endif
 }
 
@@ -727,6 +727,7 @@ void RtspAudioComponent::start_streaming_() {
   this->rtp_packets_sent_ = 0;
   this->bytes_sent_ = 0;
   this->stats_last_packets_ = 0;
+  this->stats_last_bytes_ = 0;
   this->last_stats_usec_ = this->last_rtp_usec_;
   this->last_packet_usec_ = this->last_rtp_usec_;
   this->first_packet_logged_ = false;
@@ -801,9 +802,9 @@ void RtspAudioComponent::close_session_() {
   this->teardown_guard_.arm();
   this->publish_session_state_();
 #ifdef USE_SENSOR
-  if (this->bytes_sent_sensor_ != nullptr && this->bytes_sent_published_ != 0) {
-    this->bytes_sent_published_ = 0;
-    this->bytes_sent_sensor_->publish_state(0);
+  if (this->throughput_kbps_sensor_ != nullptr && this->throughput_kbps_published_ != 0) {
+    this->throughput_kbps_published_ = 0;
+    this->throughput_kbps_sensor_->publish_state(0);
   }
   // Force the CPU-use sensor back to 0 on session end so the HA gauge doesn't
   // latch at the last live value while the device sits idle waiting for the
@@ -936,14 +937,21 @@ void RtspAudioComponent::log_stream_stats_(int64_t now) {
     this->stats_last_packets_ = this->rtp_packets_sent_;
 #ifdef USE_SENSOR
     // Piggyback on the 5 s window so HA sees one update per period rather than
-    // one per packet. Only publish on change to avoid filling the HA recorder
-    // when the stream is paused at a stable byte count.
-    if (this->bytes_sent_sensor_ != nullptr && this->bytes_sent_ != this->bytes_sent_published_) {
-      this->bytes_sent_published_ = this->bytes_sent_;
-      this->bytes_sent_sensor_->publish_state(this->bytes_sent_);
+    // one per packet. The byte delta is computed via uint32_t modular
+    // subtraction so a 4 GB wrap of `bytes_sent_` is self-healing — kbps fits
+    // comfortably in float precision, sidestepping the float-mantissa loss
+    // that motivated replacing the raw cumulative counter.
+    if (this->throughput_kbps_sensor_ != nullptr) {
+      const uint32_t delta_bytes = this->bytes_sent_ - this->stats_last_bytes_;
+      const uint16_t kbps = internal::bytes_window_to_kbps(delta_bytes, 5'000'000);
+      this->stats_last_bytes_ = this->bytes_sent_;
+      if (kbps != this->throughput_kbps_published_) {
+        this->throughput_kbps_published_ = kbps;
+        this->throughput_kbps_sensor_->publish_state(kbps);
+      }
     }
-    // Peak meter (post-gain). 5 s window matches bytes_sent and is part of
-    // standardising the diagnostic publish rate. Floor at SILENCE_FLOOR_DBFS
+    // Peak meter (post-gain). 5 s window matches the throughput sensor and is
+    // part of standardising the diagnostic publish rate. Floor at SILENCE_FLOOR_DBFS
     // so silent windows are a real, in-band number rather than -inf, which
     // keeps HA's history graph continuous and avoids surprising downstream
     // filters/formulas.

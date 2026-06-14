@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **`bytes_sent` sensor removed; replaced by `throughput_kbps`.** The old
+  cumulative byte counter was published via `Sensor::publish_state(float)`,
+  whose 24-bit mantissa lost byte-level precision above ~16 MB and could
+  cast successive values to equal-or-decreasing floats around 4.24 GB,
+  surfacing in Home Assistant as a spurious `TOTAL_INCREASING` reset on
+  long sessions. The replacement publishes the network-side bitrate over
+  the existing 5 s stats window in kbit/s (RTP payload + framing), which
+  fits comfortably in float precision and is the value users were already
+  deriving via HA's `derivative` integration. **Migration:** rename
+  `bytes_sent:` to `throughput_kbps:` under `sensor: - platform: rtsp_audio`
+  in your YAML; ESPHome config validation will reject the old key.
+
 ### Added
 
 - **Soft limiter.** Opt-in post-gain peak limiter with 1-pole IIR
