@@ -15,7 +15,7 @@
 #include "esphome/components/microphone/microphone_source.h"
 #include "esphome/components/socket/socket.h"
 #include "esphome/core/component.h"
-#include "esphome/core/ring_buffer.h"
+#include "esphome/components/ring_buffer/ring_buffer.h"
 #include "gain.h"
 #include "high_cut_biquad.h"
 #include "low_cut_biquad.h"
@@ -159,7 +159,7 @@ class RtspAudioComponent : public Component {
   audio::AudioStreamInfo stream_info_{};
   uint32_t samples_per_packet_{0};
 
-  std::unique_ptr<::esphome::RingBuffer> ring_buffer_;
+  std::unique_ptr<::esphome::ring_buffer::RingBuffer> ring_buffer_;
 
   // Sockets.
   std::unique_ptr<socket::Socket> listen_socket_;
