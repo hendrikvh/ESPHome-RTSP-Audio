@@ -283,7 +283,8 @@ void RtspAudioComponent::loop() {
 }
 
 void RtspAudioComponent::attach_mic_callback_() {
-  this->mic_source_->add_data_callback([this](const std::vector<uint8_t> &data) {
+  this->mic_source_->add_data_callback([this](const microphone::AudioCapture &capture) {
+    const auto &data = capture.data;
     // RAII guard accumulates the callback's wall-clock cost into the same
     // busy_usec_ as loop(). The mic callback runs from the I²S driver task,
     // which is why busy_usec_ is std::atomic.
