@@ -7,7 +7,7 @@ CONF_PACKET_MS = "packet_ms"
 CONF_RTSP_AUDIO_ID = "rtsp_audio_id"
 
 CODEOWNERS = ["@hendrikvh"]
-AUTO_LOAD = ["socket", "network"]
+AUTO_LOAD = ["socket", "network", "ring_buffer"]
 DEPENDENCIES = ["microphone"]
 
 rtsp_audio_ns = cg.esphome_ns.namespace("rtsp_audio")
